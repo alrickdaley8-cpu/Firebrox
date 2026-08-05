@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#171218">
+<title>FIREBROX — Arena Battler</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="hud">
+      <div class="hud-side enemy">
+        <span id="enemyName">❄️ FROSTBYTE</span>
+        <span id="enemyCrowns" class="crowns"></span>
+      </div>
+      <div id="timerPill"><span id="timer">3:00</span></div>
+      <div class="hud-side player">
+        <span id="playerCrowns" class="crowns"></span>
+        <span id="playerName">YOU 🔥</span>
+      </div>
+    </header>
+
+    <div id="arenaWrap">
+      <canvas id="game" width="540" height="960"></canvas>
+
+      <div id="chips">
+        <span id="chipDouble" class="chip hidden">⚡ DOUBLE ELIXIR</span>
+        <span id="chipSudden" class="chip danger hidden">💀 SUDDEN DEATH</span>
+      </div>
+
+      <div id="overlay" class="overlay">
+        <h1 class="logo">FIRE<span>BROX</span></h1>
+        <p class="tag">The Ice King holds the north towers.<br>Take your cards. Burn them down.</p>
+        <ul class="howto">
+          <li><b>👆 Tap a card</b>, then tap your half to deploy</li>
+          <li>💧 Elixir refills over time — spend it wisely</li>
+          <li>👑 Destroy towers. King’s Tower = instant win</li>
+          <li>⌛ Most towers when time runs out wins</li>
+        </ul>
+        <button id="playBtn" class="btn">⚔️ PLAY</button>
+      </div>
+
+      <div id="endOverlay" class="overlay hidden">
+        <h2 id="endTitle" class="end-title">VICTORY</h2>
+        <div id="endCrowns" class="end-crowns">👑👑👑</div>
+        <p id="endSub" class="end-sub"></p>
+        <button id="againBtn" class="btn">🔁 PLAY AGAIN</button>
+      </div>
+    </div>
+
+    <div id="controls">
+      <div id="elixirWrap">
+        <span id="elixirCount">5</span>
+        <div id="elixirBar">
+          <div id="elixirFill"></div>
+          <div id="elixirTicks"></div>
+        </div>
+      </div>
+      <div id="cardsRow"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

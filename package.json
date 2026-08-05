@@ -1,0 +1,11 @@
+{
+  "name": "firebrox",
+  "version": "1.0.0",
+  "description": "FIREBROX — a Clash Royale-style real-time arena card battler. No build step, just the web platform.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node test/sim.mjs && node test/dom-smoke.mjs"
+  },
+  "license": "MIT"
+}
