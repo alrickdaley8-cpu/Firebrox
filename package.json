@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node test/sim.mjs && node test/dom-smoke.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "node test/sim.mjs && node test/dom-smoke.mjs && node scripts/build.mjs --check"
   },
   "license": "MIT"
 }

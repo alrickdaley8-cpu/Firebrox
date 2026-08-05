@@ -6,7 +6,215 @@
 <meta name="theme-color" content="#171218">
 <title>FIREBROX — Arena Battler</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
-<link rel="stylesheet" href="css/style.css">
+<style>
+/* ============ FIREBROX — styles ============ */
+:root {
+  --orange: #ff7a29;
+  --orange-2: #ffb347;
+  --ice: #3fb9ff;
+  --purple: #a855f7;
+  --card-w: clamp(58px, 16.5vw, 78px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; }
+
+body {
+  background: radial-gradient(1200px 800px at 50% -10%, #3a1f14 0%, #171218 55%, #0b090d 100%);
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  height: 100dvh;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 10px;
+  gap: 6px;
+}
+
+/* ---------- HUD ---------- */
+#hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  flex: 0 0 auto;
+}
+.hud-side { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 13px; letter-spacing: .4px; }
+.hud-side.enemy  { color: #bfe9ff; text-shadow: 0 0 10px #3fb9ff55; }
+.hud-side.player { color: #ffd9b0; text-shadow: 0 0 10px #ff7a2955; }
+.crowns { font-size: 12px; letter-spacing: 1px; min-width: 40px; }
+#timerPill {
+  background: #00000088;
+  border: 1px solid #ffffff2e;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 #ffffff18;
+}
+#timerPill.hot { color: #fca5a5; border-color: #ef444466; }
+
+/* ---------- Arena ---------- */
+#arenaWrap {
+  position: relative;
+  flex: 0 1 auto;
+  margin: 0 auto;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px #ffb34733, 0 14px 44px #000c, 0 0 70px #ff7a2922;
+}
+canvas { display: block; touch-action: none; }
+
+/* chips float over the arena top-center */
+#chips {
+  position: absolute;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; gap: 8px;
+  z-index: 5; pointer-events: none;
+}
+.chip {
+  background: #1f2937cc;
+  border: 1px solid #ffffff33;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 800; letter-spacing: .6px;
+}
+.chip.danger { background: #7f1d1dcc; border-color: #ef444488; color: #fecaca; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+.hidden { display: none !important; }
+
+/* ---------- Controls ---------- */
+#controls { flex: 0 0 auto; padding-top: 2px; }
+
+#elixirWrap { display: flex; align-items: center; gap: 9px; height: 24px; margin: 0 3px 9px; }
+#elixirCount {
+  font-weight: 900; font-size: 18px; min-width: 20px; text-align: center;
+  color: #f0abfc; text-shadow: 0 0 9px #a855f7;
+  font-variant-numeric: tabular-nums;
+}
+#elixirBar {
+  position: relative; flex: 1; height: 15px;
+  border-radius: 9px; background: #26192e;
+  border: 2px solid #000; box-shadow: inset 0 2px 5px #000c;
+  overflow: hidden;
+}
+#elixirFill {
+  height: 100%; width: 50%;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #f0abfc, #a855f7 55%, #7c3aed);
+  box-shadow: 0 0 12px #a855f7aa;
+  transition: width .12s linear;
+}
+#elixirTicks {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(10% - 2px), #00000066 calc(10% - 2px), #00000066 10%);
+}
+
+#cardsRow { display: flex; align-items: flex-end; justify-content: center; gap: 9px; }
+
+/* ---------- Cards ---------- */
+.card {
+  position: relative;
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.38);
+  border-radius: 14px;
+  border: 2px solid #ffffff26;
+  background: linear-gradient(180deg, #33273b, #1c1520);
+  box-shadow: 0 4px 12px #0009, inset 0 1px 0 #ffffff22;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform .09s, box-shadow .09s, filter .15s;
+}
+.card .cost {
+  position: absolute; top: -8px; left: -8px;
+  width: 25px; height: 25px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #d8b4fe, #7c3aed 72%);
+  border: 2px solid #2a1240;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 13px;
+  box-shadow: 0 2px 6px #000b;
+}
+.card .icon { font-size: calc(var(--card-w) * .44); line-height: 1; filter: drop-shadow(0 2px 3px #000a); }
+.card .name {
+  position: absolute; bottom: 5px; left: 0; right: 0;
+  text-align: center; font-size: 9px; font-weight: 800; letter-spacing: .1px; opacity: .92;
+}
+.card.selected {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px #ff7a2966, 0 8px 18px #ff7a2944;
+  transform: translateY(-7px);
+}
+.card.disabled { filter: grayscale(.85) brightness(.55); pointer-events: auto; }
+.card.shake { animation: shake .25s; }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+.card.next {
+  width: calc(var(--card-w) * .60);
+  height: calc(var(--card-w) * .84);
+  opacity: .8; cursor: default;
+  border-style: dashed;
+}
+.card.next .icon { font-size: calc(var(--card-w) * .30); }
+.card.next .nextlabel {
+  position: absolute; top: -16px; left: 0; right: 0;
+  text-align: center; font-size: 9px; font-weight: 900; letter-spacing: 1.2px; color: #cbb6e2;
+}
+
+/* ---------- Overlays ---------- */
+.overlay {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 15px; text-align: center; padding: 22px;
+  background: radial-gradient(600px 520px at 50% 30%, #000a, #000e);
+  backdrop-filter: blur(3px);
+}
+.logo {
+  margin: 0; font-size: 54px; font-weight: 1000; letter-spacing: 2px; line-height: 1;
+  background: linear-gradient(180deg, #fff7ad, #ffb347 40%, #ff7a29 70%, #e0330e);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 12px #ff7a2955);
+}
+.logo span {
+  background: linear-gradient(180deg, #eaf8ff, #8fd8ff 40%, #3fb9ff 70%, #1d4ed8);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 12px #3fb9ff55);
+}
+.tag { margin: 0; font-size: 14.5px; line-height: 1.5; color: #e9d5ff; opacity: .95; }
+
+.howto {
+  margin: 2px 0 4px; padding: 12px 16px;
+  list-style: none; text-align: left;
+  background: #ffffff0c; border: 1px solid #ffffff1c; border-radius: 14px;
+  font-size: 12.5px; line-height: 1.85; color: #d7cce4;
+}
+
+.btn {
+  font: inherit; font-weight: 900; font-size: 18px; letter-spacing: 1px;
+  color: #fff; padding: 13px 44px;
+  border-radius: 999px; border: 0; cursor: pointer;
+  background: linear-gradient(180deg, #ff9f43, #f97316 55%, #ea580c);
+  box-shadow: 0 6px 0 #9a3412, 0 12px 28px #f9731655;
+  transition: transform .08s, box-shadow .08s;
+}
+.btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #9a3412, 0 6px 14px #f9731655; }
+
+.end-title { margin: 0; font-size: 44px; font-weight: 1000; letter-spacing: 2px; }
+.end-title.win  { background: linear-gradient(180deg, #fef9c3, #fde047 45%, #f59e0b); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 14px #f59e0b66); }
+.end-title.lose { color: #94a3b8; text-shadow: 0 0 22px #3fb9ff44; }
+.end-title.draw { color: #e2e8f0; }
+.end-crowns { font-size: 34px; letter-spacing: 4px; filter: drop-shadow(0 3px 8px #000a); }
+.end-sub { margin: 0; font-size: 14px; color: #cbd5e1; }
+</style>
 </head>
 <body>
   <div id="app">
@@ -62,6 +270,1499 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <script>/* ---------------- config.js ---------------- */
+// ============ FIREBROX — static configuration & balance ============
+// World is a 540 x 960 portrait arena. Player at the bottom, enemy at the top.
+
+const SIDES = { PLAYER: 'player', ENEMY: 'enemy' };
+const otherSide = (s) => (s === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER);
+
+const ARENA = {
+  W: 540,
+  H: 960,
+  RIVER_TOP: 446,       // river band: y in [446, 514]
+  RIVER_BOT: 514,
+  BRIDGES: [{ x: 110, w: 66 }, { x: 430, w: 66 }],
+  POCKET_TOP: 248,      // when an enemy princess tower falls you may deploy
+  POCKET_BOT: 712,      //   in "the pocket" on that side
+};
+
+const TOWERS = {
+  princess: { hp: 1400, dmg: 50, hitSpeed: 0.8, range: 148, r: 26 },
+  king:     { hp: 2400, dmg: 60, hitSpeed: 1.0, range: 155, r: 34 },
+};
+
+const TOWER_POS = {
+  enemyPrincessL:  { x: 110, y: 232 },
+  enemyPrincessR:  { x: 430, y: 232 },
+  enemyKing:       { x: 270, y: 112 },
+  playerPrincessL: { x: 110, y: 728 },
+  playerPrincessR: { x: 430, y: 728 },
+  playerKing:      { x: 270, y: 848 },
+};
+
+const ELIXIR = { MAX: 10, START: 5, RATE: 1 / 2.8 }; // 1 elixir per 2.8s
+
+const MATCH = { TIME: 180, DOUBLE_AT: 120, OT: 60 };
+
+// ------------------------------------------------------------------
+// Card definitions. type 'unit' spawns creature(s); 'spell' is instant.
+// range/sight/speed are in pixels & px/s. r = body radius (collision).
+// ------------------------------------------------------------------
+const CARDS = {
+  knight: {
+    key: 'knight', name: 'Knight', icon: '🗡️', cost: 3, type: 'unit',
+    count: 1, hp: 620, dmg: 75, hitSpeed: 1.1, range: 16, sight: 100,
+    speed: 46, r: 11, flying: false, targetsBuildings: false, canHitAir: false,
+    splash: 0, color: '#c7ccd4',
+  },
+  archers: {
+    key: 'archers', name: 'Archers', icon: '🏹', cost: 3, type: 'unit',
+    count: 2, hp: 105, dmg: 42, hitSpeed: 1.2, range: 115, sight: 132,
+    speed: 52, r: 9, flying: false, targetsBuildings: false, canHitAir: true,
+    splash: 0, color: '#f2a5c0',
+  },
+  giant: {
+    key: 'giant', name: 'Giant', icon: '🧌', cost: 5, type: 'unit',
+    count: 1, hp: 1550, dmg: 95, hitSpeed: 1.5, range: 16, sight: 90,
+    speed: 34, r: 15, flying: false, targetsBuildings: true, canHitAir: false,
+    splash: 0, color: '#d29a63',
+  },
+  musketeer: {
+    key: 'musketeer', name: 'Musketeer', icon: '🔫', cost: 4, type: 'unit',
+    count: 1, hp: 150, dmg: 95, hitSpeed: 1.0, range: 125, sight: 145,
+    speed: 48, r: 10, flying: false, targetsBuildings: false, canHitAir: true,
+    splash: 0, color: '#8e63d2',
+  },
+  minipekka: {
+    key: 'minipekka', name: 'Mini PEKKA', icon: '🤺', cost: 4, type: 'unit',
+    count: 1, hp: 340, dmg: 205, hitSpeed: 1.7, range: 16, sight: 90,
+    speed: 58, r: 10, flying: false, targetsBuildings: false, canHitAir: false,
+    splash: 0, color: '#5b6079',
+  },
+  skeletons: {
+    key: 'skeletons', name: 'Skeletons', icon: '💀', cost: 1, type: 'unit',
+    count: 3, hp: 32, dmg: 32, hitSpeed: 1.0, range: 14, sight: 85,
+    speed: 62, r: 8, flying: false, targetsBuildings: false, canHitAir: false,
+    splash: 0, color: '#f0f0f0',
+  },
+  babydragon: {
+    key: 'babydragon', name: 'Baby Dragon', icon: '🐉', cost: 4, type: 'unit',
+    count: 1, hp: 520, dmg: 68, hitSpeed: 1.6, range: 95, sight: 115,
+    speed: 42, r: 12, flying: true, targetsBuildings: false, canHitAir: true,
+    splash: 36, color: '#79c96e',
+  },
+  fireball: {
+    key: 'fireball', name: 'Fireball', icon: '🔥', cost: 4, type: 'spell',
+    dmg: 176, radius: 48, towerScale: 0.4, castDelay: 0.45, color: '#ff8c3a',
+  },
+};
+
+// The 8-card deck both players use.
+const DECK = [
+  'knight', 'archers', 'giant', 'musketeer',
+  'minipekka', 'skeletons', 'babydragon', 'fireball',
+];
+
+// Projectile visuals/behaviour per attacker kind.
+const PROJECTILES = {
+  arrow:  { speed: 480, w: 2.5 },
+  bolt:   { speed: 700, w: 4 },
+  flame:  { speed: 280, w: 7 },
+};
+
+/* ---------------- engine.js ---------------- */
+// ============ FIREBROX — game engine (DOM-free; runs in Node for tests) ============
+
+let NEXT_ID = 1;
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ------------------------------------------------------------------
+// Game state
+// ------------------------------------------------------------------
+function buildTowers() {
+  const mk = (id, side, kind, lane, pos) => ({
+    id, side, kind, lane,
+    x: pos.x, y: pos.y, r: TOWERS[kind].r,
+    hp: TOWERS[kind].hp, maxHp: TOWERS[kind].hp,
+    dmg: TOWERS[kind].dmg, hitSpeed: TOWERS[kind].hitSpeed,
+    range: TOWERS[kind].range,
+    active: kind !== 'king',
+    cool: 0, alive: true, flash: 0,
+  });
+  return [
+    mk('epl', SIDES.ENEMY, 'princess', 'left', TOWER_POS.enemyPrincessL),
+    mk('epr', SIDES.ENEMY, 'princess', 'right', TOWER_POS.enemyPrincessR),
+    mk('ek', SIDES.ENEMY, 'king', null, TOWER_POS.enemyKing),
+    mk('ppl', SIDES.PLAYER, 'princess', 'left', TOWER_POS.playerPrincessL),
+    mk('ppr', SIDES.PLAYER, 'princess', 'right', TOWER_POS.playerPrincessR),
+    mk('pk', SIDES.PLAYER, 'king', null, TOWER_POS.playerKing),
+  ];
+}
+
+function createGame() {
+  const deckP = shuffle([...DECK]);
+  const deckE = shuffle([...DECK]);
+  return {
+    t: 0,                       // elapsed regulation time
+    otLeft: 0,                  // overtime countdown (when suddenDeath)
+    double: false,
+    suddenDeath: false,
+    over: false,
+    winner: null,               // SIDES.* | null (draw)
+    winReason: '',
+    elixir: { player: ELIXIR.START, enemy: ELIXIR.START },
+    hand: { player: deckP.slice(0, 4), enemy: deckE.slice(0, 4) },
+    queue: { player: deckP.slice(4), enemy: deckE.slice(4) },
+    crowns: { player: 0, enemy: 0 },
+    towers: buildTowers(),
+    units: [], projectiles: [], spells: [],
+    effects: [], floaters: [],
+    events: [],                 // drained each frame by the UI (for sounds)
+    shake: 0,
+  };
+}
+
+const drainEvents = (s) => { const ev = s.events; s.events = []; return ev; };
+const towersOf = (s, side) => s.towers.filter((t) => t.side === side);
+const enemyUnits = (s, side) => s.units.filter((u) => u.side !== side && u.hp > 0);
+const cardInHand = (s, side, key) => s.hand[side].findIndex((k) => k === key);
+
+// ------------------------------------------------------------------
+// Deploying cards
+// ------------------------------------------------------------------
+function overlapsTower(s, x, y) {
+  return s.towers.some((t) => t.alive && Math.hypot(x - t.x, y - t.y) < t.r + 14);
+}
+
+function isValidDeploy(s, side, key, x, y) {
+  const card = CARDS[key];
+  if (!card) return false;
+  if (x < 14 || x > ARENA.W - 14 || y < 14 || y > ARENA.H - 14) return false;
+  if (card.type === 'spell') return true; // spells can go anywhere
+
+  // never inside the river band
+  if (y > ARENA.RIVER_TOP - 6 && y < ARENA.RIVER_BOT + 6) return false;
+
+  const ownHalf = side === SIDES.PLAYER
+    ? y > ARENA.RIVER_BOT + 6
+    : y < ARENA.RIVER_TOP - 6;
+  if (ownHalf) return !overlapsTower(s, x, y);
+
+  // "pocket" deploy: allowed on the lane whose enemy princess has fallen
+  const lane = x >= ARENA.W / 2 ? 'right' : 'left';
+  const princess = s.towers.find((t) => t.side === otherSide(side) && t.lane === lane);
+  if (!princess || princess.alive) return false;
+  const yMin = side === SIDES.PLAYER ? ARENA.POCKET_TOP : ARENA.RIVER_BOT + 6;
+  const yMax = side === SIDES.PLAYER ? ARENA.RIVER_TOP - 6 : ARENA.POCKET_BOT;
+  if (y < yMin || y > yMax) return false;
+  return !overlapsTower(s, x, y);
+}
+
+function spawnUnit(s, side, key, x, y) {
+  const c = CARDS[key];
+  s.units.push({
+    id: NEXT_ID++, side, key,
+    x: clamp(x, 14, ARENA.W - 14), y: clamp(y, 14, ARENA.H - 14),
+    r: c.r, hp: c.hp, maxHp: c.hp,
+    dmg: c.dmg, hitSpeed: c.hitSpeed, cool: 0.35 + Math.random() * 0.2,
+    range: c.range, sight: c.sight, speed: c.speed,
+    flying: c.flying, targetsBuildings: c.targetsBuildings,
+    canHitAir: c.canHitAir, splash: c.splash,
+    target: null, retarget: Math.random() * 0.2,
+    facing: side === SIDES.PLAYER ? -Math.PI / 2 : Math.PI / 2,
+    flash: 0, bob: Math.random() * 6,
+  });
+}
+
+function deployCard(s, side, key, x, y) {
+  if (s.over) return { ok: false, reason: 'over' };
+  const idx = cardInHand(s, side, key);
+  if (idx < 0) return { ok: false, reason: 'not-in-hand' };
+  const card = CARDS[key];
+  if (s.elixir[side] < card.cost) return { ok: false, reason: 'elixir' };
+  if (!isValidDeploy(s, side, key, x, y)) return { ok: false, reason: 'position' };
+  if (s.units.filter((u) => u.side === side).length >= 30) return { ok: false, reason: 'cap' };
+
+  s.elixir[side] -= card.cost;
+  if (card.type === 'spell') {
+    s.spells.push({
+      key, side, x, y, t: card.castDelay,
+      dmg: card.dmg, radius: card.radius, towerScale: card.towerScale,
+    });
+  } else {
+    const offs = card.count === 1 ? [[0, 0]]
+      : card.count === 2 ? [[-15, 0], [15, 0]]
+      : [[0, -15], [-14, 10], [14, 10]];
+    for (let i = 0; i < card.count; i++) {
+      spawnUnit(s, side, key, x + offs[i][0], y + offs[i][1]);
+    }
+  }
+  // cycle the card into the back of the deck, draw the next one
+  s.hand[side][idx] = s.queue[side].shift();
+  s.queue[side].push(key);
+
+  s.effects.push({ type: 'ring', x, y, side, age: 0, life: 0.4 });
+  s.events.push({ type: 'deploy', side, key });
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------
+// Combat helpers
+// ------------------------------------------------------------------
+const targetAlive = (t) => !!t && t.hp > 0 && t.alive !== false;
+
+function applyDamage(s, target, amount, srcSide) {
+  if (target.kind && !target.alive) return; // dead tower
+  target.hp -= amount;
+  target.flash = 0.12;
+  if (target.kind) { // tower
+    if (target.kind === 'king' && !target.active) {
+      target.active = true;
+      s.events.push({ type: 'kingWake', side: target.side });
+    }
+    if (target.hp <= 0) { target.hp = 0; destroyTower(s, target, srcSide); }
+  }
+}
+
+function destroyTower(s, t, srcSide) {
+  if (s.over) return;
+  t.alive = false;
+  s.crowns[srcSide] += t.kind === 'king' ? 3 : 1;
+  s.effects.push({ type: 'boom', x: t.x, y: t.y, radius: t.r + 34, age: 0, life: 0.6 });
+  s.shake = Math.max(s.shake, 9);
+  s.events.push({ type: 'towerDown', side: t.side, kind: t.kind });
+  if (t.kind !== 'king') {
+    const king = s.towers.find((k) => k.side === t.side && k.kind === 'king');
+    if (king && !king.active) {
+      king.active = true;
+      s.events.push({ type: 'kingWake', side: t.side });
+    }
+    if (s.suddenDeath) finish(s, srcSide, 'First tower in sudden death!');
+  } else {
+    s.crowns[srcSide] = 3;
+    finish(s, srcSide, "King's Tower destroyed!");
+  }
+}
+
+function finish(s, winner, reason) {
+  if (s.over) return;
+  s.over = true;
+  s.winner = winner;
+  s.winReason = reason;
+  s.events.push({ type: 'end', winner, reason });
+}
+
+function tiebreak(s) {
+  const minAliveHp = (side) => {
+    const alive = towersOf(s, side).filter((t) => t.alive).map((t) => t.hp);
+    if (!alive.length) return 0;
+    return Math.min(...alive);
+  };
+  const a = minAliveHp(SIDES.PLAYER);
+  const b = minAliveHp(SIDES.ENEMY);
+  if (Math.abs(a - b) <= 1) finish(s, null, 'Dead even — a draw!');
+  else finish(s, a > b ? SIDES.PLAYER : SIDES.ENEMY, 'Tiebreaker: weakest tower HP');
+}
+
+function acquireTarget(s, u) {
+  if (!u.targetsBuildings) {
+    let best = null, bd = Infinity;
+    for (const e of s.units) {
+      if (e.side === u.side || e.hp <= 0) continue;
+      if (!u.canHitAir && e.flying) continue;
+      const d = dist(u, e);
+      if (d < u.sight && d < bd) { bd = d; best = e; }
+    }
+    if (best) return best;
+  }
+  let best = null, bd = Infinity;
+  for (const t of s.towers) {
+    if (!t.alive || t.side === u.side) continue;
+    const d = dist(u, t) - t.r;
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+
+// Ground troops must funnel through a bridge to cross the river.
+function steer(u, tgt) {
+  const direct = () => {
+    const d = Math.hypot(tgt.x - u.x, tgt.y - u.y) || 1;
+    return { x: (tgt.x - u.x) / d, y: (tgt.y - u.y) / d };
+  };
+  if (u.flying) return direct();
+  const uTop = u.y < ARENA.RIVER_TOP;   // "top half" = enemy's side for the player
+  const tTop = tgt.y < ARENA.RIVER_TOP;
+  if (uTop === tTop) return direct();
+  const br = ARENA.BRIDGES[Math.abs(u.x - ARENA.BRIDGES[0].x) < Math.abs(u.x - ARENA.BRIDGES[1].x) ? 0 : 1];
+  if (Math.abs(u.x - br.x) < br.w / 2 - 4) return direct(); // in the corridor: cross!
+  const edge = { x: br.x, y: uTop ? ARENA.RIVER_BOT + 22 : ARENA.RIVER_TOP - 22 };
+  const d = Math.hypot(edge.x - u.x, edge.y - u.y);
+  if (d < 10) return direct();
+  return { x: (edge.x - u.x) / d, y: (edge.y - u.y) / d };
+}
+
+function constrain(s, u) {
+  u.x = clamp(u.x, 14, ARENA.W - 14);
+  u.y = clamp(u.y, 14, ARENA.H - 14);
+  if (!u.flying && u.y > ARENA.RIVER_TOP - 2 && u.y < ARENA.RIVER_BOT + 2) {
+    const inCorridor = ARENA.BRIDGES.some((b) => Math.abs(u.x - b.x) <= b.w / 2 - 2);
+    if (!inCorridor) {
+      const dTop = u.y - (ARENA.RIVER_TOP - 2);
+      const dBot = (ARENA.RIVER_BOT + 2) - u.y;
+      u.y = dTop < dBot ? ARENA.RIVER_TOP - 2 : ARENA.RIVER_BOT + 2; // slide along the bank
+    }
+  }
+  for (const t of s.towers) {
+    if (!t.alive) continue;
+    const dx = u.x - t.x, dy = u.y - t.y;
+    const d = Math.hypot(dx, dy);
+    const min = t.r + u.r - 2;
+    if (d < min) {
+      if (d < 0.001) { u.x = t.x + min; continue; }
+      u.x = t.x + (dx / d) * min;
+      u.y = t.y + (dy / d) * min;
+    }
+  }
+}
+
+function strike(s, u, tgt) {
+  const melee = u.range <= 24;
+  if (melee) {
+    applyDamage(s, tgt, u.dmg, u.side);
+    s.effects.push({
+      type: 'slash',
+      x: (u.x + tgt.x) / 2, y: (u.y + tgt.y) / 2,
+      a: u.facing, age: 0, life: 0.14,
+    });
+    s.events.push({ type: 'hit', heavy: u.dmg >= 150 });
+  } else {
+    const kind = u.key === 'musketeer' ? 'bolt' : u.key === 'babydragon' ? 'flame' : 'arrow';
+    s.projectiles.push({
+      x: u.x, y: u.y, side: u.side, kind,
+      target: tgt, tx: tgt.x, ty: tgt.y,
+      dmg: u.dmg, splash: u.splash || 0,
+      speed: kind === 'bolt' ? 700 : kind === 'flame' ? 280 : 480,
+    });
+    s.events.push({ type: 'shoot', kind });
+  }
+}
+
+// ------------------------------------------------------------------
+// Per-frame systems
+// ------------------------------------------------------------------
+function updateTowers(s, dt) {
+  for (const t of s.towers) {
+    if (!t.alive || !t.active) continue;
+    t.flash = Math.max(0, t.flash - dt);
+    t.cool -= dt;
+    if (t.cool > 0) continue;
+    let best = null, bd = Infinity;
+    for (const u of s.units) {
+      if (u.side === t.side || u.hp <= 0) continue;
+      const d = Math.hypot(u.x - t.x, u.y - t.y);
+      if (d <= t.range + u.r && d < bd) { bd = d; best = u; }
+    }
+    if (best) {
+      t.cool = t.hitSpeed;
+      s.projectiles.push({
+        x: t.x, y: t.y - t.r, side: t.side, kind: 'arrow',
+        target: best, tx: best.x, ty: best.y,
+        dmg: t.dmg, splash: 0, speed: 430, fromTower: true,
+      });
+      s.events.push({ type: 'shoot', kind: 'tower' });
+    }
+  }
+}
+
+function updateUnits(s, dt) {
+  for (const u of s.units) {
+    if (u.hp <= 0) continue;
+    u.flash = Math.max(0, u.flash - dt);
+    u.cool -= dt;
+    u.retarget -= dt;
+    if (u.retarget <= 0 || !targetAlive(u.target)) {
+      u.target = acquireTarget(s, u);
+      u.retarget = 0.22 + Math.random() * 0.12;
+    }
+    const tgt = u.target;
+    if (!tgt) continue;
+    const tr = tgt.r || 0;
+    const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
+    const reach = u.range + tr + u.r * 0.25;
+    if (d > reach) {
+      const dir = steer(u, tgt);
+      u.x += dir.x * u.speed * dt;
+      u.y += dir.y * u.speed * dt;
+      u.facing = Math.atan2(dir.y, dir.x);
+      constrain(s, u);
+    } else {
+      u.facing = Math.atan2(tgt.y - u.y, tgt.x - u.x);
+      if (u.cool <= 0) {
+        u.cool = u.hitSpeed;
+        strike(s, u, tgt);
+      }
+    }
+  }
+
+  // soft body separation so troops don't stack into one blob
+  const us = s.units;
+  for (let i = 0; i < us.length; i++) {
+    const a = us[i];
+    if (a.hp <= 0) continue;
+    for (let j = i + 1; j < us.length; j++) {
+      const b = us[j];
+      if (b.hp <= 0 || a.flying !== b.flying) continue;
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let d = Math.hypot(dx, dy);
+      const min = a.r + b.r;
+      if (d < min) {
+        if (d < 0.01) { dx = 0.01; dy = 0; d = 0.01; }
+        const push = (min - d) * 0.25;
+        const nx = dx / d, ny = dy / d;
+        a.x -= nx * push; a.y -= ny * push;
+        b.x += nx * push; b.y += ny * push;
+      }
+    }
+  }
+
+  // remove the dead
+  s.units = s.units.filter((u) => {
+    if (u.hp > 0) return true;
+    s.effects.push({ type: 'puff', x: u.x, y: u.y, r: u.r, age: 0, life: 0.35 });
+    s.events.push({ type: 'die', key: u.key });
+    return false;
+  });
+}
+
+function updateProjectiles(s, dt) {
+  s.projectiles = s.projectiles.filter((p) => {
+    if (targetAlive(p.target)) { p.tx = p.target.x; p.ty = p.target.y; }
+    const dx = p.tx - p.x, dy = p.ty - p.y;
+    const d = Math.hypot(dx, dy);
+    const step = p.speed * dt;
+    if (d > step) { p.x += (dx / d) * step; p.y += (dy / d) * step; return true; }
+
+    // arrived
+    if (p.splash > 0) {
+      for (const u of s.units) {
+        if (u.side === p.side || u.hp <= 0) continue;
+        if (Math.hypot(u.x - p.tx, u.y - p.ty) <= p.splash + u.r) applyDamage(s, u, p.dmg, p.side);
+      }
+      for (const t of s.towers) {
+        if (!t.alive || t.side === p.side) continue;
+        if (Math.hypot(t.x - p.tx, t.y - p.ty) <= p.splash + t.r * 0.5) applyDamage(s, t, p.dmg, p.side);
+      }
+      s.effects.push({ type: 'boom', x: p.tx, y: p.ty, radius: p.splash, age: 0, life: 0.3 });
+      s.events.push({ type: 'hit', heavy: false });
+    } else if (targetAlive(p.target)) {
+      applyDamage(s, p.target, p.dmg, p.side);
+      s.events.push({ type: 'hit', heavy: false });
+    }
+    return false;
+  });
+}
+
+function updateSpells(s, dt) {
+  s.spells = s.spells.filter((sp) => {
+    sp.t -= dt;
+    if (sp.t > 0) return true;
+    for (const u of s.units) {
+      if (u.side === sp.side || u.hp <= 0) continue;
+      if (Math.hypot(u.x - sp.x, u.y - sp.y) <= sp.radius + u.r) applyDamage(s, u, sp.dmg, sp.side);
+    }
+    for (const t of s.towers) {
+      if (!t.alive || t.side === sp.side) continue;
+      if (Math.hypot(t.x - sp.x, t.y - sp.y) <= sp.radius + t.r * 0.5) {
+        const dmg = Math.round(sp.dmg * sp.towerScale);
+        applyDamage(s, t, dmg, sp.side);
+        s.floaters.push({ x: t.x, y: t.y - t.r - 8, text: `-${dmg}`, age: 0, life: 0.9 });
+      }
+    }
+    s.effects.push({ type: 'boom', x: sp.x, y: sp.y, radius: sp.radius + 18, age: 0, life: 0.5, fire: true });
+    s.shake = Math.max(s.shake, 6);
+    s.events.push({ type: 'boom' });
+    return false;
+  });
+}
+
+function updateFx(s, dt) {
+  for (const e of s.effects) e.age += dt;
+  s.effects = s.effects.filter((e) => e.age < e.life);
+  for (const f of s.floaters) { f.age += dt; f.y -= 24 * dt; }
+  s.floaters = s.floaters.filter((f) => f.age < f.life);
+}
+
+// ------------------------------------------------------------------
+// Main tick
+// ------------------------------------------------------------------
+function update(s, dt) {
+  if (s.over) { // battle decided; let the fireworks fade
+    updateFx(s, dt);
+    s.shake = Math.max(0, s.shake - dt * 14);
+    return;
+  }
+
+  s.t += dt;
+  if (!s.suddenDeath) {
+    if (!s.double && s.t >= MATCH.DOUBLE_AT) {
+      s.double = true;
+      s.events.push({ type: 'double' });
+    }
+    if (s.t >= MATCH.TIME) {
+      if (s.crowns.player !== s.crowns.enemy) {
+        finish(s, s.crowns.player > s.crowns.enemy ? SIDES.PLAYER : SIDES.ENEMY, 'More towers destroyed');
+        return;
+      }
+      s.suddenDeath = true;
+      s.otLeft = MATCH.OT;
+      s.events.push({ type: 'overtime' });
+    }
+  } else {
+    s.otLeft -= dt;
+    if (s.otLeft <= 0) { tiebreak(s); return; }
+  }
+
+  const rate = ELIXIR.RATE * (s.double || s.suddenDeath ? 2 : 1);
+  for (const side of [SIDES.PLAYER, SIDES.ENEMY]) {
+    s.elixir[side] = Math.min(ELIXIR.MAX, s.elixir[side] + rate * dt);
+  }
+
+  updateTowers(s, dt);
+  updateUnits(s, dt);
+  updateProjectiles(s, dt);
+  updateSpells(s, dt);
+  updateFx(s, dt);
+  s.shake = Math.max(0, s.shake - dt * 14);
+}
+
+/* ---------------- ai.js ---------------- */
+// ============ FIREBROX — AI opponent ("FROSTBYTE") ============
+// Simple but lively heuristic CPU: defends pushes, punishes swarms with
+// fireball, builds its own attacks, and finishes low towers with spells.
+
+
+const UNIT_CARDS = Object.values(CARDS).filter((c) => c.type === 'unit').map((c) => c.key);
+
+class OpponentAI {
+  constructor(side, opts = {}) {
+    this.side = side;
+    this.foe = otherSide(side);
+    this.reaction = opts.reaction ?? 1.0;       // seconds to answer a threat
+    this.offenseElixir = opts.offenseElixir ?? 7.5;
+    this.offenseGap = opts.offenseGap ?? 3.2;   // min seconds between pushes
+    this.mistake = opts.mistake ?? 0.06;        // chance to skip a thought
+    this.think = 0.8;                            // countdown to next thought
+    this.clock = 0;
+    this.pending = [];
+    this.lastOffense = -99;
+  }
+
+  // --- side-aware geometry (AI works for either side, used by tests too) ---
+  get isTop() { return this.side === SIDES.ENEMY; }
+  myBackY()   { return this.isTop ? 178 : 782; }
+  myBridgeY() { return this.isTop ? ARENA.RIVER_TOP - 18 : ARENA.RIVER_BOT + 18; }
+  myHalf(u)   { return this.isTop ? u.y < ARENA.RIVER_TOP : u.y > ARENA.RIVER_BOT; }
+
+  update(s, dt) {
+    if (s.over) return;
+    this.clock += dt;
+
+    // run scheduled plays
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      if (this.clock >= this.pending[i].at) {
+        const p = this.pending.splice(i, 1)[0];
+        p.fn();
+      }
+    }
+
+    this.think -= dt;
+    if (this.think > 0) return;
+    this.think = 0.55 + Math.random() * 0.35;
+    if (Math.random() < this.mistake) return;
+
+    this.plan(s);
+  }
+
+  schedule(delay, fn) {
+    if (this.pending.length < 3) this.pending.push({ at: this.clock + delay, fn });
+  }
+
+  // Find a legal deploy spot near (x, y), nudging around until valid.
+  findSpot(s, key, x, y) {
+    const tries = [
+      [0, 0], [26, 0], [-26, 0], [0, 26], [0, -26],
+      [52, 0], [-52, 0], [0, 52], [0, -52], [34, 34], [-34, 34], [34, -34], [-34, -34],
+    ];
+    for (const [ox, oy] of tries) {
+      const px = Math.max(20, Math.min(ARENA.W - 20, x + ox));
+      const py = Math.max(20, Math.min(ARENA.H - 20, y + oy));
+      if (isValidDeploy(s, this.side, key, px, py)) return { x: px, y: py };
+    }
+    return null;
+  }
+
+  plan(s) {
+    const foes = s.units.filter((u) => u.side === this.foe && u.hp > 0);
+    const me = this.side;
+
+    // ---------- 1. DEFENSE ----------
+    const threats = foes.filter((u) =>
+      this.myHalf(u) ||
+      towersOf(s, me).some((t) => t.alive && Math.hypot(u.x - t.x, u.y - t.y) < 240),
+    );
+    if (threats.length) {
+      // biggest cluster
+      let cluster = threats;
+      if (threats.length >= 2) {
+        let bestGroup = [threats[0]];
+        for (const a of threats) {
+          const g = threats.filter((b) => Math.hypot(a.x - b.x, a.y - b.y) < 75);
+          if (g.length > bestGroup.length) bestGroup = g;
+        }
+        cluster = bestGroup;
+      }
+      const cx = cluster.reduce((n, u) => n + u.x, 0) / cluster.length;
+      const cy = cluster.reduce((n, u) => n + u.y, 0) / cluster.length;
+      const clusterHp = cluster.reduce((n, u) => n + u.hp, 0);
+      const airThreat = threats.some((u) => u.flying);
+      const tankThreat = threats.some((u) => u.targetsBuildings && u.maxHp > 1200);
+
+      // fireball a fat clump
+      if (cluster.length >= 3 && clusterHp > 280 && cardInHand(s, me, 'fireball') >= 0 && s.elixir[me] >= 4) {
+        this.schedule(this.reaction, () => deployCard(s, me, 'fireball', cx, cy));
+        return;
+      }
+
+      // pick a counter card
+      let pick = null;
+      if (airThreat) pick = ['musketeer', 'archers', 'babydragon'].find((k) => cardInHand(s, me, k) >= 0 && s.elixir[me] >= CARDS[k].cost);
+      if (!pick && tankThreat) pick = ['minipekka', 'skeletons', 'knight'].find((k) => cardInHand(s, me, k) >= 0 && s.elixir[me] >= CARDS[k].cost);
+      if (!pick) {
+        pick = ['knight', 'minipekka', 'babydragon', 'archers', 'musketeer', 'skeletons']
+          .filter((k) => cardInHand(s, me, k) >= 0 && s.elixir[me] >= CARDS[k].cost)
+          .sort((a, b) => CARDS[a].cost - CARDS[b].cost)[0];
+      }
+      if (!pick) return;
+
+      // interpose between the threat and my king
+      const king = towersOf(s, me).find((t) => t.kind === 'king');
+      const dx = king.x - cx, dy = king.y - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      const sx = cx + (dx / d) * 55;
+      const sy = cy + (dy / d) * 55;
+      this.schedule(this.reaction * (0.7 + Math.random() * 0.7), () => {
+        const spot = this.findSpot(s, pick, sx, sy);
+        if (spot) deployCard(s, me, pick, spot.x, spot.y);
+      });
+      return;
+    }
+
+    // ---------- 2. SPELL FINISHER ----------
+    const dying = towersOf(s, this.foe).find((t) => t.alive && t.kind !== 'king' && t.hp <= CARDS.fireball.dmg * CARDS.fireball.towerScale + 25);
+    if (dying && cardInHand(s, me, 'fireball') >= 0 && s.elixir[me] >= 6 && Math.random() < 0.6) {
+      this.schedule(0.8, () => deployCard(s, me, 'fireball', dying.x, dying.y));
+      return;
+    }
+
+    // ---------- 3. OFFENSE ----------
+    if (this.clock - this.lastOffense < this.offenseGap) return;
+    if (s.elixir[me] < this.offenseElixir && !(s.elixir[me] >= 5 && Math.random() < 0.3)) return;
+
+    // attack the weaker lane
+    const princesses = towersOf(s, this.foe).filter((t) => t.alive && t.kind === 'princess');
+    let laneX;
+    if (!princesses.length) laneX = Math.random() < 0.5 ? ARENA.BRIDGES[0].x : ARENA.BRIDGES[1].x;
+    else {
+      const weakest = princesses.sort((a, b) => a.hp - b.hp)[0];
+      laneX = weakest.lane === 'left' ? ARENA.BRIDGES[0].x : ARENA.BRIDGES[1].x;
+    }
+
+    const has = (k) => cardInHand(s, me, k) >= 0 && s.elixir[me] >= CARDS[k].cost;
+
+    // Giant-led push when possible
+    if (has('giant') && s.elixir[me] >= 8) {
+      const bx = laneX, by = this.myBackY();
+      this.schedule(0.5, () => {
+        const spot = this.findSpot(s, 'giant', bx, by);
+        if (spot && deployCard(s, me, 'giant', spot.x, spot.y).ok) {
+          this.lastOffense = this.clock;
+          // follow-up support behind the giant
+          this.schedule(1.7, () => {
+            const support = ['musketeer', 'babydragon', 'archers']
+              .find((k) => cardInHand(s, me, k) >= 0 && s.elixir[me] >= CARDS[k].cost + 2);
+            if (!support) return;
+            const g = s.units.filter((u) => u.side === me && u.key === 'giant').pop();
+            const px = g ? g.x : bx;
+            const py = g ? g.y + (this.isTop ? -46 : 46) : this.myBridgeY();
+            const sp2 = this.findSpot(s, support, px, py);
+            if (sp2) deployCard(s, me, support, sp2.x, sp2.y);
+          });
+        }
+      });
+      return;
+    }
+
+    // otherwise: bridge pressure with the beefiest affordable unit
+    const pick = UNIT_CARDS
+      .filter((k) => has(k) && k !== 'skeletons')
+      .sort((a, b) => CARDS[b].hp - CARDS[a].hp)[0] || (has('skeletons') ? 'skeletons' : null);
+    if (!pick) return;
+    this.schedule(0.4, () => {
+      const spot = this.findSpot(s, pick, laneX + (Math.random() * 30 - 15), this.myBridgeY());
+      if (spot && deployCard(s, me, pick, spot.x, spot.y).ok) this.lastOffense = this.clock;
+    });
+  }
+}
+
+/* ---------------- render.js ---------------- */
+// ============ FIREBROX — canvas renderer ============
+
+const EMOJI_FONT = (s) => `${s}px "Noto Color Emoji","Segoe UI Emoji","Apple Color Emoji",sans-serif`;
+const TEAM = { player: '#ff7a29', enemy: '#3fb9ff' };
+const HP_COLOR = { player: '#4ade80', enemy: '#f87171' };
+
+// deterministic grass tufts so the arena doesn't shimmer between frames
+const tufts = [];
+for (let i = 0; i < 90; i++) {
+  const rx = ((i * 73.13) % 1), ry = ((i * 37.77) % 1);
+  tufts.push({ x: 10 + rx * (ARENA.W - 20), y: 10 + ry * (ARENA.H - 20), l: 3 + (i % 3) });
+}
+
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawArena(ctx, s) {
+  const { W, H } = ARENA;
+  // grass — slightly cooler on the ice king's side
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#4d8f6f');
+  g.addColorStop(0.48, '#5aa050');
+  g.addColorStop(0.52, '#5fa84e');
+  g.addColorStop(1, '#66b346');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // mow stripes
+  ctx.fillStyle = 'rgba(255,255,255,0.045)';
+  for (let y = 0; y < H; y += 96) ctx.fillRect(0, y, W, 48);
+
+  // grass tufts
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1.5;
+  for (const t of tufts) {
+    ctx.beginPath();
+    ctx.moveTo(t.x, t.y);
+    ctx.lineTo(t.x + 2, t.y - t.l);
+    ctx.moveTo(t.x + 4, t.y);
+    ctx.lineTo(t.x + 3, t.y - t.l);
+    ctx.stroke();
+  }
+
+  // dirt pads under tower spots & lane ends
+  ctx.fillStyle = 'rgba(150,110,62,0.35)';
+  for (const x of [110, 430]) {
+    ctx.beginPath(); ctx.ellipse(x, 232, 52, 40, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, 728, 52, 40, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, 426, 46, 22, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x, 534, 46, 22, 0, 0, 7); ctx.fill();
+  }
+  ctx.beginPath(); ctx.ellipse(270, 112, 62, 42, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(270, 848, 62, 42, 0, 0, 7); ctx.fill();
+
+  // river
+  const rv = ctx.createLinearGradient(0, ARENA.RIVER_TOP, 0, ARENA.RIVER_BOT);
+  rv.addColorStop(0, '#2f8fd6');
+  rv.addColorStop(0.5, '#4db3ec');
+  rv.addColorStop(1, '#2f8fd6');
+  ctx.fillStyle = rv;
+  ctx.fillRect(0, ARENA.RIVER_TOP, W, ARENA.RIVER_BOT - ARENA.RIVER_TOP);
+  // animated wave lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+  ctx.lineWidth = 2;
+  for (let k = 0; k < 3; k++) {
+    const y0 = ARENA.RIVER_TOP + 14 + k * 20;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 18) {
+      const y = y0 + Math.sin(x / 34 + s.t * 1.6 + k * 2) * 3;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  // river banks
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(0, ARENA.RIVER_TOP - 4, W, 4);
+  ctx.fillRect(0, ARENA.RIVER_BOT, W, 4);
+
+  // bridges
+  for (const b of ARENA.BRIDGES) {
+    ctx.fillStyle = '#8a5a30';
+    rr(ctx, b.x - b.w / 2 - 4, ARENA.RIVER_TOP - 12, b.w + 8, ARENA.RIVER_BOT - ARENA.RIVER_TOP + 24, 6);
+    ctx.fill();
+    ctx.fillStyle = '#b07a44';
+    rr(ctx, b.x - b.w / 2, ARENA.RIVER_TOP - 10, b.w, ARENA.RIVER_BOT - ARENA.RIVER_TOP + 20, 4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = 2;
+    for (let y = ARENA.RIVER_TOP - 2; y < ARENA.RIVER_BOT + 10; y += 12) {
+      ctx.beginPath(); ctx.moveTo(b.x - b.w / 2, y); ctx.lineTo(b.x + b.w / 2, y); ctx.stroke();
+    }
+  }
+}
+
+function drawDeployZones(ctx, s, ui) {
+  if (!ui.selected) return;
+  // own half tint
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(0, ARENA.RIVER_BOT + 4, ARENA.W, ARENA.H - ARENA.RIVER_BOT - 4);
+  // pockets
+  for (const lane of ['left', 'right']) {
+    const p = s.towers.find((t) => t.side === SIDES.ENEMY && t.lane === lane);
+    if (p && !p.alive) {
+      ctx.fillStyle = 'rgba(74,222,128,0.14)';
+      const x0 = lane === 'left' ? 0 : ARENA.W / 2;
+      ctx.fillRect(x0, ARENA.POCKET_TOP, ARENA.W / 2, ARENA.RIVER_TOP - 4 - ARENA.POCKET_TOP);
+    }
+  }
+  // ghost
+  if (ui.ghost.visible) {
+    const ok = ui.ghost.valid;
+    ctx.beginPath();
+    ctx.arc(ui.ghost.x, ui.ghost.y, CARDS[ui.selected].type === 'spell' ? CARDS[ui.selected].radius : 26, 0, 7);
+    ctx.fillStyle = ok ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = ok ? '#4ade80' : '#f87171';
+    ctx.stroke();
+  }
+}
+
+function drawCrown(ctx, x, y, size) {
+  ctx.fillStyle = '#ffd94d';
+  ctx.strokeStyle = '#a16207';
+  ctx.lineWidth = 1.5;
+  const w = size, h = size * 0.72;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y + h / 2);
+  ctx.lineTo(x - w / 2, y - h / 4);
+  ctx.lineTo(x - w / 4, y);
+  ctx.lineTo(x, y - h / 2);
+  ctx.lineTo(x + w / 4, y);
+  ctx.lineTo(x + w / 2, y - h / 4);
+  ctx.lineTo(x + w / 2, y + h / 2);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+}
+
+function drawTower(ctx, s, t) {
+  if (!t.alive) {
+    // rubble
+    ctx.fillStyle = 'rgba(40,34,34,0.85)';
+    ctx.beginPath(); ctx.ellipse(t.x, t.y + 4, t.r + 8, (t.r + 8) * 0.7, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.7 + t.x;
+      ctx.beginPath();
+      ctx.moveTo(t.x, t.y);
+      ctx.lineTo(t.x + Math.cos(a) * t.r, t.y + Math.sin(a) * t.r * 0.7 + 4);
+      ctx.stroke();
+    }
+    return;
+  }
+  const team = TEAM[t.side];
+  // pedestal
+  ctx.fillStyle = '#6b7280';
+  ctx.beginPath(); ctx.ellipse(t.x, t.y + t.r * 0.5, t.r + 7, (t.r + 7) * 0.62, 0, 0, 7); ctx.fill();
+  // body
+  const bg = ctx.createLinearGradient(t.x, t.y - t.r, t.x, t.y + t.r);
+  bg.addColorStop(0, '#d6dae2');
+  bg.addColorStop(1, '#8f96a3');
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, 7); ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#4b5563';
+  ctx.stroke();
+  // team dome
+  ctx.fillStyle = team;
+  ctx.beginPath(); ctx.arc(t.x, t.y - t.r * 0.28, t.r * 0.62, Math.PI, 0); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // battlements
+  ctx.fillStyle = '#4b5563';
+  for (let i = -1; i <= 1; i++) ctx.fillRect(t.x + i * t.r * 0.5 - 4, t.y - t.r - 6, 8, 8);
+
+  if (t.kind === 'king') {
+    drawCrown(ctx, t.x, t.y - t.r * 0.2, 22);
+    if (!t.active) {
+      ctx.font = EMOJI_FONT(18);
+      ctx.textAlign = 'center';
+      const bob = Math.sin(s.t * 3) * 3;
+      ctx.fillText('💤', t.x + t.r * 0.8, t.y - t.r - 8 + bob);
+    }
+  }
+  if (t.flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(0.7, t.flash * 5)})`;
+    ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, 7); ctx.fill();
+  }
+  // hp bar
+  const w = t.kind === 'king' ? 72 : 58;
+  const pct = Math.max(0, t.hp / t.maxHp);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  rr(ctx, t.x - w / 2, t.y - t.r - 22, w, 9, 4); ctx.fill();
+  ctx.fillStyle = HP_COLOR[t.side];
+  if (pct > 0) { rr(ctx, t.x - w / 2 + 1.5, t.y - t.r - 20.5, (w - 3) * pct, 6, 3); ctx.fill(); }
+  ctx.font = '700 9px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(Math.ceil(t.hp), t.x, t.y - t.r - 14.5);
+}
+
+function drawUnit(ctx, s, u) {
+  const team = TEAM[u.side];
+  const flyOff = u.flying ? 12 + Math.sin(s.t * 5 + u.bob) * 2.5 : 0;
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(u.x, u.y + u.r * 0.75, u.r * (u.flying ? 0.7 : 0.9), u.r * 0.4, 0, 0, 7);
+  ctx.fill();
+
+  const y = u.y - flyOff;
+  // body + team ring
+  ctx.beginPath(); ctx.arc(u.x, y, u.r, 0, 7);
+  ctx.fillStyle = CARDS[u.key].color;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = team;
+  ctx.stroke();
+  // top highlight
+  ctx.beginPath(); ctx.arc(u.x - u.r * 0.25, y - u.r * 0.3, u.r * 0.45, 0, 7);
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fill();
+  // glyph
+  ctx.font = EMOJI_FONT(Math.round(u.r * 1.35));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(CARDS[u.key].icon, u.x, y + 1);
+  ctx.textBaseline = 'alphabetic';
+
+  if (u.flash > 0) {
+    ctx.beginPath(); ctx.arc(u.x, y, u.r + 1, 0, 7);
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(0.8, u.flash * 6)})`;
+    ctx.fill();
+  }
+  // hp bar
+  if (u.hp < u.maxHp) {
+    const w = Math.max(20, u.r * 2.2);
+    const pct = Math.max(0, u.hp / u.maxHp);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(u.x - w / 2, y - u.r - 9, w, 4);
+    ctx.fillStyle = HP_COLOR[u.side];
+    ctx.fillRect(u.x - w / 2, y - u.r - 9, w * pct, 4);
+  }
+}
+
+function drawProjectile(ctx, p) {
+  const a = Math.atan2(p.ty - p.y, p.tx - p.x);
+  if (p.kind === 'arrow') {
+    ctx.strokeStyle = '#e7d7a8';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(p.x - Math.cos(a) * 8, p.y - Math.sin(a) * 8);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.fillStyle = '#fef3c7';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, 7); ctx.fill();
+  } else if (p.kind === 'bolt') {
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 7);
+    g.addColorStop(0, '#fff');
+    g.addColorStop(0.4, '#f0abfc');
+    g.addColorStop(1, 'rgba(168,85,247,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill();
+  } else { // flame
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 9);
+    g.addColorStop(0, '#fff7ad');
+    g.addColorStop(0.5, '#fb923c');
+    g.addColorStop(1, 'rgba(234,88,12,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, 7); ctx.fill();
+  }
+}
+
+function drawEffects(ctx, s) {
+  for (const e of s.effects) {
+    const k = e.age / e.life;
+    if (e.type === 'ring') {
+      ctx.beginPath(); ctx.arc(e.x, e.y, 8 + k * 30, 0, 7);
+      ctx.strokeStyle = `rgba(255,255,255,${0.7 * (1 - k)})`;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    } else if (e.type === 'slash') {
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, 12, e.a - 0.9, e.a + 0.9);
+      ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - k)})`;
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+    } else if (e.type === 'puff') {
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (0.6 + k), 0, 7);
+      ctx.fillStyle = `rgba(180,180,190,${0.5 * (1 - k)})`;
+      ctx.fill();
+    } else if (e.type === 'boom') {
+      const R = e.radius * (0.4 + k * 0.9);
+      const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, R);
+      if (e.fire) {
+        g.addColorStop(0, `rgba(255,247,173,${0.95 * (1 - k)})`);
+        g.addColorStop(0.55, `rgba(251,146,60,${0.8 * (1 - k)})`);
+        g.addColorStop(1, 'rgba(234,88,12,0)');
+      } else {
+        g.addColorStop(0, `rgba(255,255,255,${0.8 * (1 - k)})`);
+        g.addColorStop(1, 'rgba(150,150,160,0)');
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(e.x, e.y, R, 0, 7); ctx.fill();
+    }
+  }
+  // spell markers (incoming fireball telegraph)
+  for (const sp of s.spells) {
+    const pulse = 0.5 + Math.sin(s.t * 14) * 0.3;
+    ctx.beginPath(); ctx.arc(sp.x, sp.y, sp.radius, 0, 7);
+    ctx.fillStyle = sp.side === SIDES.PLAYER
+      ? `rgba(255,122,41,${0.16 + pulse * 0.1})`
+      : `rgba(239,68,68,${0.16 + pulse * 0.1})`;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = sp.side === SIDES.PLAYER ? '#ff7a29' : '#f87171';
+    ctx.stroke();
+  }
+  // damage floaters
+  for (const f of s.floaters) {
+    const k = f.age / f.life;
+    ctx.font = '800 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(0,0,0,${0.8 * (1 - k)})`;
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = `rgba(255,220,120,${1 - k})`;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+}
+
+function render(ctx, s, ui) {
+  ctx.save();
+  ctx.clearRect(0, 0, ARENA.W, ARENA.H);
+  if (s.shake > 0) {
+    ctx.translate(
+      Math.sin(s.t * 47.3) * s.shake * 0.6,
+      Math.cos(s.t * 39.1) * s.shake * 0.6,
+    );
+  }
+  drawArena(ctx, s);
+  drawDeployZones(ctx, s, ui);
+  for (const t of s.towers) drawTower(ctx, s, t);
+  const units = [...s.units].sort((a, b) => a.y - b.y);
+  for (const u of units) drawUnit(ctx, s, u);
+  for (const p of s.projectiles) drawProjectile(ctx, p);
+  drawEffects(ctx, s);
+  ctx.restore();
+}
+
+/* ---------------- audio.js ---------------- */
+// ============ FIREBROX — tiny WebAudio synth SFX (no assets) ============
+class Sfx {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+  }
+
+  // must be called from a user gesture
+  unlock() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.5;
+    this.master.connect(this.ctx.destination);
+  }
+
+  tone(f0, f1, dur, type = 'square', vol = 0.15, when = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  noise(dur, vol = 0.25, fLow = 200, fHigh = 1200, when = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(fHigh, t);
+    bp.frequency.exponentialRampToValueAtTime(Math.max(40, fLow), t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(this.master);
+    src.start(t);
+  }
+
+  play(name) {
+    if (!this.ctx) return;
+    switch (name) {
+      case 'click':    this.tone(660, 660, 0.05, 'square', 0.07); break;
+      case 'select':   this.tone(520, 780, 0.07, 'triangle', 0.12); break;
+      case 'error':    this.tone(170, 120, 0.16, 'sawtooth', 0.12); break;
+      case 'deploy':   this.tone(320, 170, 0.13, 'square', 0.16); this.noise(0.08, 0.06, 300, 900); break;
+      case 'shoot':    this.tone(880, 520, 0.05, 'square', 0.04); break;
+      case 'hit':      this.tone(230, 150, 0.05, 'triangle', 0.05); break;
+      case 'heavy':    this.tone(160, 70, 0.13, 'sawtooth', 0.14); break;
+      case 'die':      this.tone(420, 130, 0.12, 'triangle', 0.06); this.noise(0.07, 0.04, 300, 900); break;
+      case 'boom':     this.noise(0.5, 0.35, 70, 900); this.tone(130, 45, 0.4, 'sine', 0.3); break;
+      case 'tower':
+        this.noise(0.6, 0.35, 60, 400);
+        this.tone(98, 49, 0.5, 'sawtooth', 0.22);
+        this.tone(392, 392, 0.1, 'square', 0.1, 0);
+        this.tone(311, 311, 0.1, 'square', 0.1, 0.12);
+        this.tone(262, 262, 0.16, 'square', 0.1, 0.24);
+        break;
+      case 'horn':
+        [262, 392, 523].forEach((f, i) => this.tone(f, f, 0.14, 'square', 0.11, i * 0.09));
+        break;
+      case 'double':   this.tone(880, 1320, 0.16, 'sine', 0.13); break;
+      case 'overtime':
+        [523, 659, 784].forEach((f, i) => this.tone(f, f, 0.1, 'sawtooth', 0.09, i * 0.07));
+        break;
+      case 'wake':     this.tone(196, 392, 0.2, 'square', 0.1); break;
+      case 'win':
+        [523, 659, 784, 1047].forEach((f, i) => this.tone(f, f, i === 3 ? 0.4 : 0.14, 'triangle', 0.14, i * 0.12));
+        break;
+      case 'lose':
+        [392, 330, 262, 196].forEach((f, i) => this.tone(f, f, i === 3 ? 0.45 : 0.15, 'sawtooth', 0.1, i * 0.13));
+        break;
+    }
+  }
+}
+
+/* ---------------- main.js ---------------- */
+// ============ FIREBROX — bootstrap, UI & game loop ============
+
+
+
+
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('game');
+const ctx = canvas.getContext('2d');
+const sfx = new Sfx();
+
+let game = createGame();
+let ai = new OpponentAI(SIDES.ENEMY);
+let playing = false;
+let endShown = false;
+
+const ui = {
+  selected: null,                 // card key currently selected
+  ghost: { x: 0, y: 0, visible: false, valid: false },
+};
+
+// ---------------------------------------------------------------
+// Canvas sizing — keep a 9:16 arena fitted to the available space
+// ---------------------------------------------------------------
+function fit() {
+  const wrap = $('arenaWrap');
+  const availW = Math.min(window.innerWidth, 536) - 24;
+  const availH = window.innerHeight - $('hud').offsetHeight - $('controls').offsetHeight - 40;
+  let h = Math.max(300, availH);
+  let w = h * (ARENA.W / ARENA.H);
+  if (w > availW) { w = availW; h = w * (ARENA.H / ARENA.W); }
+  wrap.style.width = `${w}px`;
+  wrap.style.height = `${h}px`;
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = ARENA.W * dpr;
+  canvas.height = ARENA.H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', fit);
+
+function toWorld(ev) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (ev.clientX - r.left) / r.width * ARENA.W,
+    y: (ev.clientY - r.top) / r.height * ARENA.H,
+    inside: ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom,
+  };
+}
+
+// ---------------------------------------------------------------
+// Cards UI
+// ---------------------------------------------------------------
+const cardEls = new Map();
+let nextEl = null;
+
+function buildCards() {
+  const row = $('cardsRow');
+  row.innerHTML = '';
+  cardEls.clear();
+  for (const key of game.hand.player) {
+    const c = CARDS[key];
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.dataset.key = key;
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-label', `${c.name}, cost ${c.cost}`);
+    el.innerHTML = `<div class="cost">${c.cost}</div><div class="icon">${c.icon}</div><div class="name">${c.name}</div>`;
+    row.appendChild(el);
+    cardEls.set(key, el);
+  }
+  nextEl = document.createElement('div');
+  nextEl.className = 'card next';
+  row.appendChild(nextEl);
+  refreshNext();
+}
+
+function refreshNext() {
+  const key = game.queue.player[0];
+  nextEl.innerHTML = `<div class="nextlabel">NEXT</div><div class="icon">${CARDS[key].icon}</div>`;
+}
+
+let lastHandSig = '';
+function syncCards() {
+  const sig = game.hand.player.join(',');
+  if (sig !== lastHandSig) { // hand changed → rebuild so cycle is visible
+    lastHandSig = sig;
+    const row = $('cardsRow');
+    const keys = game.hand.player;
+    [...cardEls.values()].forEach((el) => el.remove());
+    cardEls.clear();
+    keys.forEach((key) => {
+      const c = CARDS[key];
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.key = key;
+      el.innerHTML = `<div class="cost">${c.cost}</div><div class="icon">${c.icon}</div><div class="name">${c.name}</div>`;
+      row.insertBefore(el, nextEl);
+      cardEls.set(key, el);
+    });
+    if (ui.selected && !keys.includes(ui.selected)) ui.selected = null;
+    refreshNext();
+  }
+  const e = game.elixir.player;
+  for (const [key, el] of cardEls) {
+    el.classList.toggle('disabled', CARDS[key].cost > e);
+    el.classList.toggle('selected', ui.selected === key);
+  }
+}
+
+function selectCard(key) {
+  if (!playing) return;
+  if (ui.selected === key) { ui.selected = null; sfx.play('click'); return; }
+  if (game.elixir.player < CARDS[key].cost) {
+    sfx.play('error');
+    const el = cardEls.get(key);
+    if (el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+    return;
+  }
+  ui.selected = key;
+  sfx.play('select');
+}
+
+function attemptDeploy(x, y) {
+  if (!ui.selected || !playing) return;
+  const key = ui.selected;
+  const res = deployCard(game, SIDES.PLAYER, key, x, y);
+  if (res.ok) {
+    ui.selected = null;
+    ui.ghost.visible = false;
+  } else {
+    sfx.play('error');
+    const el = cardEls.get(key);
+    if (el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+  }
+}
+
+// ---------------------------------------------------------------
+// Input — tap a card then tap the arena, or drag from card to arena
+// ---------------------------------------------------------------
+let dragging = false;
+
+$('cardsRow').addEventListener('pointerdown', (ev) => {
+  const el = ev.target.closest('.card');
+  if (!el || el.classList.contains('next')) return;
+  ev.preventDefault();
+  selectCard(el.dataset.key);
+  if (ui.selected) {
+    dragging = true;
+    ui.ghost.visible = false;
+    ui.ghost.x = ev.clientX; ui.ghost.y = ev.clientY;
+  }
+});
+
+window.addEventListener('pointermove', (ev) => {
+  if (!ui.selected) return;
+  const w = toWorld(ev);
+  ui.ghost.visible = w.inside;
+  ui.ghost.x = w.x; ui.ghost.y = w.y;
+  ui.ghost.valid = isValidDeploy(game, SIDES.PLAYER, ui.selected, w.x, w.y);
+});
+
+window.addEventListener('pointerup', (ev) => {
+  if (dragging && ui.selected) {
+    const w = toWorld(ev);
+    if (w.inside) attemptDeploy(w.x, w.y);
+  }
+  dragging = false;
+});
+
+canvas.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();
+  const w = toWorld(ev);
+  if (ui.selected) attemptDeploy(w.x, w.y);
+});
+canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+window.addEventListener('keydown', (ev) => {
+  if (!playing) return;
+  const n = Number(ev.key);
+  if (n >= 1 && n <= 4) selectCard(game.hand.player[n - 1]);
+  if (ev.key === 'Escape') ui.selected = null;
+});
+
+// ---------------------------------------------------------------
+// HUD sync
+// ---------------------------------------------------------------
+function fmt(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  return `${(sec / 60) | 0}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+function syncHud() {
+  const tl = game.suddenDeath ? game.otLeft : MATCH.TIME - game.t;
+  $('timer').textContent = fmt(tl);
+  $('timerPill').classList.toggle('hot', game.suddenDeath || tl <= 10);
+  $('chipDouble').classList.toggle('hidden', !(game.double && !game.suddenDeath));
+  $('chipSudden').classList.toggle('hidden', !game.suddenDeath);
+  $('elixirFill').style.width = `${(game.elixir.player / 10) * 100}%`;
+  $('elixirCount').textContent = Math.floor(game.elixir.player);
+  $('playerCrowns').textContent = '👑'.repeat(game.crowns.player);
+  $('enemyCrowns').textContent = '👑'.repeat(game.crowns.enemy);
+  syncCards();
+}
+
+// ---------------------------------------------------------------
+// Event sounds
+// ---------------------------------------------------------------
+function playEvents(list) {
+  for (const ev of list) {
+    switch (ev.type) {
+      case 'deploy':   sfx.play('deploy'); break;
+      case 'shoot':    if (Math.random() < 0.7) sfx.play('shoot'); break;
+      case 'hit':      sfx.play(ev.heavy ? 'heavy' : Math.random() < 0.5 ? 'hit' : '_'); break;
+      case 'die':      if (Math.random() < 0.6) sfx.play('die'); break;
+      case 'boom':     sfx.play('boom'); break;
+      case 'towerDown': sfx.play('tower'); break;
+      case 'kingWake': sfx.play('wake'); break;
+      case 'double':   sfx.play('double'); break;
+      case 'overtime': sfx.play('overtime'); break;
+      case 'end':
+        setTimeout(() => sfx.play(ev.winner === SIDES.PLAYER ? 'win' : ev.winner ? 'lose' : 'click'), 500);
+        break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------
+// Overlays / flow
+// ---------------------------------------------------------------
+function showEnd() {
+  const o = $('endOverlay');
+  const title = $('endTitle');
+  if (game.winner === SIDES.PLAYER) { title.textContent = 'VICTORY!'; title.className = 'end-title win'; }
+  else if (game.winner === SIDES.ENEMY) { title.textContent = 'DEFEAT'; title.className = 'end-title lose'; }
+  else { title.textContent = 'DRAW'; title.className = 'end-title draw'; }
+  $('endCrowns').textContent = '👑'.repeat(game.crowns.player) + ' 🆚 ' + '👑'.repeat(game.crowns.enemy);
+  $('endSub').textContent = game.winReason;
+  o.classList.remove('hidden');
+}
+
+function startGame() {
+  game = createGame();
+  ai = new OpponentAI(SIDES.ENEMY);
+  ui.selected = null;
+  ui.ghost.visible = false;
+  endShown = false;
+  lastHandSig = '';
+  buildCards();
+  $('overlay').classList.add('hidden');
+  $('endOverlay').classList.add('hidden');
+  playing = true;
+  sfx.unlock();
+  sfx.play('horn');
+}
+
+$('playBtn').addEventListener('click', () => { sfx.unlock(); sfx.play('click'); startGame(); });
+$('againBtn').addEventListener('click', () => { sfx.play('click'); startGame(); });
+
+// ---------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (playing) {
+    if (!game.over) {
+      ai.update(game, dt);
+      update(game, dt);
+    }
+    playEvents(drainEvents(game));
+    if (game.over && !endShown) {
+      endShown = true;
+      setTimeout(showEnd, 1000);
+    }
+  }
+  render(ctx, game, ui);
+  syncHud();
+  requestAnimationFrame(frame);
+}
+
+buildCards();
+fit();
+requestAnimationFrame(frame);
+</script>
 </body>
 </html>

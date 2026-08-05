@@ -7,14 +7,40 @@ Play cards, spend elixir, crush the Ice King's towers.
 
 ![genre](https://img.shields.io/badge/genre-RTS%20card%20battler-orange)
 
-## ▶️ Run it
+## 🌐 Play on GitHub Pages
+
+The repo root contains a **self-contained `index.html`** (~62 KB, all CSS/JS
+inlined — it even works when opened directly from disk).
+
+To publish it on GitHub Pages:
+
+1. Merge this branch into `main`
+2. Repo **Settings → Pages → Source: "Deploy from a branch"**
+3. Branch: **`main`**, folder: **`/ (root)`** → Save
+4. Play at `https://<username>.github.io/Firebrox/`
+
+## ▶️ Run locally
 
 ```bash
-npm start          # serves on http://localhost:8000
+npm start          # serves on http://localhost:8000 (single-file build at /)
 # or: python3 -m http.server 8000
 ```
 
-Open http://localhost:8000 in a browser (works great on mobile, too).
+- `/` — the single-file game (what GitHub Pages serves)
+- `/dev.html` — the modular dev build (HMR-friendly sources)
+- Opening `index.html` straight from disk works too (no server needed)
+
+## 🔨 Development
+
+The canonical sources live in `js/` + `css/` + `dev.html`. The shipped
+`index.html` is **generated** — edit the sources, then rebuild:
+
+```bash
+npm run build      # regenerate index.html from the modular sources
+npm test           # engine sims + UI smoke tests (both builds) + staleness check
+```
+
+Don't edit `index.html` by hand; `npm test` fails if it's out of date.
 
 ## 🎮 How to play
 
@@ -54,7 +80,8 @@ npm test    # headless AI-vs-AI simulations + deploy-rule checks (Node, no deps)
 ## 🗂️ Code layout
 
 ```
-index.html        shell & overlays
+index.html        ⭐ GENERATED single-file game (GitHub Pages serves this)
+dev.html          modular dev entry (uses js/* + css/*)
 css/style.css     HUD, cards, elixir bar, overlays
 js/config.js      balance: cards, towers, arena geometry
 js/engine.js      sim: elixir, targeting, river/bridge pathing, combat, OT   (DOM-free)
@@ -62,6 +89,8 @@ js/ai.js          the Frostbyte CPU                                          (DO
 js/render.js      Canvas 2D renderer
 js/audio.js       Web Audio synth SFX (zero audio assets)
 js/main.js        input, HUD sync, game loop
+scripts/build.mjs generates index.html from the modular sources
 server.mjs        tiny static server
 test/sim.mjs      headless end-to-end engine tests
+test/dom-smoke.mjs boots the real UI (both builds) under a stub DOM
 ```
