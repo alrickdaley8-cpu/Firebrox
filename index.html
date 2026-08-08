@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WORLDBOX — God Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Top Bar -->
+  <header id="topbar">
+    <div class="logo">
+      <div class="logo-icon">◈</div>
+      <div>
+        <h1>WORLDBOX</h1>
+        <span>GOD SIMULATOR • ARENA EDITION</span>
+      </div>
+    </div>
+    <div class="top-controls">
+      <button id="btn-pause" class="pill active" title="Space">⏸️ PAUSE</button>
+      <div class="speed-group">
+        <button class="speed" data-speed="1">1×</button>
+        <button class="speed active" data-speed="2">2×</button>
+        <button class="speed" data-speed="4">4×</button>
+      </div>
+      <button id="btn-new" class="pill ghost">🌍 NEW WORLD</button>
+      <button id="btn-save" class="pill ghost">💾</button>
+    </div>
+    <div class="stats-top">
+      <div class="stat"><b id="stat-pop">0</b><label>Population</label></div>
+      <div class="stat"><b id="stat-villages">0</b><label>Villages</label></div>
+      <div class="stat"><b id="stat-year">Year 0</b><label>Age</label></div>
+    </div>
+  </header>
+
+  <div id="main">
+    <!-- Left Toolbox -->
+    <aside id="toolbox">
+      <div class="tool-section">
+        <label>INSPECT</label>
+        <button class="tool active" data-tool="inspect" data-size="1">🔍<span>Inspect</span></button>
+        <button class="tool" data-tool="hand">✋<span>Drag</span></button>
+      </div>
+      <div class="tool-section">
+        <label>TERRAFORM</label>
+        <button class="tool" data-tool="land">🟩<span>Land</span></button>
+        <button class="tool" data-tool="water">🌊<span>Water</span></button>
+        <button class="tool" data-tool="sand">🏜️<span>Sand</span></button>
+        <button class="tool" data-tool="forest">🌲<span>Forest</span></button>
+        <button class="tool" data-tool="mountain">⛰️<span>Mountain</span></button>
+        <button class="tool" data-tool="lava">🌋<span>Lava</span></button>
+      </div>
+      <div class="tool-section">
+        <label>LIFE</label>
+        <button class="tool" data-tool="human">🧍<span>Human</span></button>
+        <button class="tool" data-tool="sheep">🐑<span>Sheep</span></button>
+        <button class="tool" data-tool="wolf">🐺<span>Wolf</span></button>
+        <button class="tool" data-tool="chicken">🐔<span>Chicken</span></button>
+        <button class="tool" data-tool="tree">🌳<span>Tree</span></button>
+      </div>
+      <div class="tool-section">
+        <label>POWERS</label>
+        <button class="tool danger" data-tool="lightning">⚡<span>Lightning</span></button>
+        <button class="tool danger" data-tool="fire">🔥<span>Fire</span></button>
+        <button class="tool danger" data-tool="rain">🌧️<span>Acid Rain</span></button>
+        <button class="tool danger" data-tool="nuke">💣<span>Nuke</span></button>
+        <button class="tool danger" data-tool="heal">✨<span>Bless</span></button>
+      </div>
+
+      <div id="brush-panel">
+        <label>BRUSH SIZE</label>
+        <div class="brush-sizes">
+          <button class="bs active" data-brush="1">S</button>
+          <button class="bs" data-brush="3">M</button>
+          <button class="bs" data-brush="5">L</button>
+          <button class="bs" data-brush="9">XL</button>
+        </div>
+        <label style="margin-top:10px">INTENSITY</label>
+        <input type="range" id="intensity" min="1" max="5" value="2">
+      </div>
+    </aside>
+
+    <!-- Canvas Area -->
+    <div id="viewport">
+      <canvas id="world" width="1200" height="800"></canvas>
+      <canvas id="overlay" width="1200" height="800"></canvas>
+      <div id="tooltip"></div>
+      <div id="cursor-preview"></div>
+      <div id="bottom-bar">
+        <div id="tile-info">Hover a tile • Drag to paint • Scroll to zoom • Right-drag to pan</div>
+        <div class="zoom-controls">
+          <button id="zoom-out">−</button>
+          <span id="zoom-label">100%</span>
+          <button id="zoom-in">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <aside id="inspector">
+      <div class="panel-card">
+        <h3>🌡️ WORLD</h3>
+        <div class="kv"><span>Temperature</span><b id="kv-temp">18°C</b></div>
+        <div class="bar"><div id="bar-temp" style="width:45%"></div></div>
+        <div class="kv"><span>Biome</span><b id="kv-biome">Plains</b></div>
+        <div class="kv"><span>Tile</span><b id="kv-tile">Grass</b></div>
+        <div class="kv"><span>Elevation</span><b id="kv-elev">—</b></div>
+        <div class="kv"><span>Moisture</span><b id="kv-moist">—</b></div>
+      </div>
+
+      <div class="panel-card">
+        <h3>👥 CIVILIZATION</h3>
+        <div class="kv"><span>Humans</span><b id="kv-humans">0</b></div>
+        <div class="kv"><span>Animals</span><b id="kv-animals">0</b></div>
+        <div class="kv"><span>Houses</span><b id="kv-houses">0</b></div>
+        <div class="kv"><span>Fires</span><b id="kv-fires">0</b></div>
+        <canvas id="graph" width="260" height="60"></canvas>
+        <div class="legend"><span class="dot human"></span> Humans <span class="dot animal"></span> Animals</div>
+      </div>
+
+      <div class="panel-card">
+        <h3>📜 LOG</h3>
+        <div id="log"></div>
+      </div>
+
+      <div class="panel-card small">
+        <h3>CONTROLS</h3>
+        <p><kbd>Space</kbd> Pause &nbsp; <kbd>R</kbd> Random world &nbsp; <kbd>C</kbd> Clear</p>
+        <p><kbd>1-4</kbd> Speed &nbsp; <kbd>[ ]</kbd> Brush size</p>
+      </div>
+    </aside>
+  </div>
+
+  <div id="seed-bar">
+    <span>Seed: <b id="seed-label"></b></span>
+    <input id="seed-input" placeholder="enter seed...">
+    <button id="btn-generate">GENERATE</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
