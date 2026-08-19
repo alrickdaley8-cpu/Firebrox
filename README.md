@@ -18,6 +18,30 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
                              # drives thousands of frames, asserts zero errors
 ```
 
+## What's new in the massive update
+
+* **Sentinels & on-foot combat** — strip a planet and drones come looking. A 3-level
+  wanted system escalates the swarm; fight back with the right-click boltcaster, an
+  exosuit shield that regenerates out of combat, and a death/revive loop that costs cargo.
+* **Mission board** — procedural contracts at every station (xenobiology surveys, bounty
+  hunts, supply runs, cartography, archaeology, sentinel suppression) with a live HUD
+  tracker and units + nanite payouts.
+* **Refiner & fabricator** (`C`) — nine recipes: warp cells, chromatic smelting, carbon
+  fusion, life-support gel, hazard cells, shield batteries, launch fuel, nanite clusters,
+  hull plates.
+* **Shipyard** — four ships (Radiant Shuttle, Vyk-3 Interceptor, Ponderous Freighter,
+  Long Sight Explorer) with real trade-offs in speed, damage, shields, cargo and warp range.
+* **Freighters & cargo pods** — capital ships drift through systems; crack their pods for salvage.
+* **Black holes** — a gravity well that drags you in and spits you out hundreds of light
+  years closer to the centre of the galaxy, at the cost of hull integrity.
+* **The Galactic Core** — reach the innermost system and fly into the singularity to break
+  through into an entirely new procedural galaxy, keeping everything you own.
+* **Stars burn** — fly too close and your shields, then your hull, cook off.
+* **Three new upgrade lines** — exosuit shielding, boltcaster module, analysis visor.
+* **Settings menu** — FOV, sensitivity, invert Y, bloom, render scale, shadows, music/SFX.
+* **Photo mode** (`H`), **renameable discoveries**, **creature feeding** (`G`),
+  **auroras**, **shooting stars** and a **generative ambient soundtrack**.
+
 ## The universe
 
 **320 star systems** in a four-armed spiral, each seeded with a name, star class,
@@ -74,8 +98,9 @@ and buy hyperdrive coils to reach further stars. Everything autosaves to localSt
 | **Combat** | Left-click photon cannons |
 | **On foot** | `WASD` move · mouse look · `Space` jump / jetpack · `Shift` sprint · left-click mining beam |
 | **Interact** | Hold `E` to land, dock or launch · hold `F` to scan planets, lifeforms and ruins |
-| **Utility** | `M` galaxy map (`Enter` warp, `Q`/`E` rotate, wheel zoom) · `C` craft warp cell · `R` recharge hazard · `G` refuel thrusters |
-| **System** | `Tab` journey log · `Ctrl+S` save · `P` exposure toggle · `Esc` release mouse |
+| **On-foot combat** | Right-click boltcaster · sentinels escalate as you mine |
+| **Utility** | `M` galaxy map (`Enter` warp, `Q`/`E` rotate, wheel zoom) · `C` refiner · `R` recharge hazard · `G` refuel ship / feed fauna |
+| **System** | `Tab` journey log · `H` photo mode · `Ctrl+S` save · `P` exposure · `Esc` release mouse |
 
 ## Layout
 
@@ -84,6 +109,8 @@ index.html        HUD, title, galaxy map, station and log overlays
 styles.css        the whole interface
 src/main.js       renderer, post-processing, mode switching, game loop
 src/universe.js   galaxy / system / planet / biome / economy generation
+src/missions.js   procedural contracts and progress tracking
+src/crafting.js   refiner recipes
 src/space.js      star system flight, combat, docking
 src/surface.js    planet surface, terrain streaming, weather, creatures, ruins
 src/map.js        galactic map + hyperdrive jumps
@@ -95,5 +122,13 @@ src/ui.js         HUD, scanner, compass, market and technology screens
 src/audio.js      synthesised SFX and engine hum
 server.mjs        zero-dependency static server
 vendor/three/     vendored three.js + postprocessing addons (import-mapped)
-tools/            headless jsdom smoke test
+tools/            headless jsdom test rigs (npm test, npm run test:boot)
 ```
+
+## Tests
+
+`npm test` drives every subsystem headlessly (thousands of frames of flight, combat,
+landing, terrain streaming, missions, crafting, shipyard, black holes, the core).
+`npm run test:boot` goes further: it boots the *real* `src/main.js` against a stubbed
+WebGL2 context, clicks through the title screen and overlays, lands on a planet and
+launches again — asserting zero console errors throughout.

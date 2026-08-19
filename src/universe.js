@@ -140,6 +140,9 @@ export function generateGalaxy(seed = 'firebrox', count = 320) {
       danger,
       pirates: { Low: 0, Moderate: 2, High: 4, Extreme: 6 }[danger] ?? 0,
       distFromCore: radius,
+      hasBlackHole: srng.chance(0.2),
+      hasFreighter: srng.chance(0.55),
+      isCore: false,
     });
   }
   // No star may be stranded: pull isolated systems into hyperdrive range of a neighbour.
@@ -160,7 +163,14 @@ export function generateGalaxy(seed = 'firebrox', count = 320) {
     }
   }
 
-  return { seed, name: GALAXY_NAME, systems };
+  // the innermost system is the galactic core
+  let core = systems[0];
+  for (const s of systems) if (s.distFromCore < core.distFromCore) core = s;
+  core.isCore = true;
+  core.name = 'The Core';
+  core.hasBlackHole = false;
+
+  return { seed, name: GALAXY_NAME, systems, coreId: core.id };
 }
 
 export function buildSystem(sysMeta) {

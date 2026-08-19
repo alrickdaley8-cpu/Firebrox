@@ -1,12 +1,13 @@
 {
   "name": "firebrox",
   "version": "1.0.0",
-  "description": "FIREBROX — a procedural No Man’s Sky in the browser. No build step, no dependencies.",
+  "description": "FIREBROX \u2014 a procedural No Man\u2019s Sky in the browser. No build step, no dependencies.",
   "main": "index.js",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
-    "test": "node tools/run-tests.mjs"
+    "test": "node tools/run-tests.mjs",
+    "test:boot": "node tools/run-boot-test.mjs"
   },
   "repository": {
     "type": "git",

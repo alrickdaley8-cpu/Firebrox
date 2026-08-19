@@ -98,6 +98,9 @@ export class GalaxyMap {
         <span>${known ? sel.economy + ' · ' + sel.wealth : 'unknown economy'}</span>
         <span>Conflict: ${known ? sel.danger : '?'}</span>
         <span>Distance: <em>${d.toFixed(1)} ly</em></span>
+        <span>To core: ${sel.distFromCore.toFixed(0)} ly</span>
+        ${sel.hasBlackHole ? '<span style="color:#c48fff">black hole</span>' : ''}
+        ${sel.isCore ? '<span style="color:#ffd9a0">GALACTIC CORE</span>' : ''}
       </div>
       <div style="margin-top:6px">${inRange
         ? (state.inventory.warpcell > 0
@@ -161,6 +164,20 @@ export class GalaxyMap {
       ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
 
+      if (s.hasBlackHole) {
+        ctx.strokeStyle = 'rgba(196,143,255,0.85)';
+        ctx.lineWidth = 1.2 * devicePixelRatio;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r + 4 * devicePixelRatio, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (s.isCore) {
+        ctx.strokeStyle = '#ffd9a0';
+        ctx.lineWidth = 2 * devicePixelRatio;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 14 * devicePixelRatio, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffd9a0';
+        ctx.font = `${11 * devicePixelRatio}px ui-monospace, monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('THE CORE', p.x, p.y + 28 * devicePixelRatio);
+      }
       if (isCur) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.4 * devicePixelRatio;

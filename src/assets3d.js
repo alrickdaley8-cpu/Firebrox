@@ -468,3 +468,151 @@ export function buildOutpost(rng, accent) {
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
 }
+
+// ---------------------------------------------------------------- sentinels & capital ships
+export function buildSentinel(scale = 1) {
+  const g = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color: '#cfd6dd', metalness: 0.85, roughness: 0.25 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#2a2f36', metalness: 0.7, roughness: 0.4 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: '#ff2f2f', emissive: '#ff2f2f', emissiveIntensity: 3 });
+
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 1), shell);
+  g.add(core);
+  const band = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.12, 8, 20), dark);
+  band.rotation.x = Math.PI / 2;
+  g.add(band);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), eyeMat);
+  eye.position.z = -0.85;
+  g.add(eye);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 1.1), dark);
+    fin.position.set(Math.cos(a) * 1.0, Math.sin(a) * 1.0, 0.3);
+    fin.rotation.z = a;
+    g.add(fin);
+  }
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: radialSprite('#ff4d4d', 128, 2), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+  }));
+  glow.scale.setScalar(3.2);
+  glow.position.z = -0.9;
+  g.add(glow);
+
+  g.scale.setScalar(scale);
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.userData.eye = eye;
+  return g;
+}
+
+export function buildFreighter(rng) {
+  const g = new THREE.Group();
+  const hull = new THREE.MeshStandardMaterial({ color: '#8d97a6', metalness: 0.7, roughness: 0.4 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#3d444e', metalness: 0.6, roughness: 0.5 });
+  const lit = new THREE.MeshStandardMaterial({ color: '#ffd08a', emissive: '#ffb45e', emissiveIntensity: 2.4 });
+
+  const spine = new THREE.Mesh(new THREE.BoxGeometry(120, 60, 900), hull);
+  g.add(spine);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(180, 90, 190), hull);
+  bridge.position.set(0, 70, -370);
+  g.add(bridge);
+  for (let i = 0; i < 7; i++) {
+    const block = new THREE.Mesh(new THREE.BoxGeometry(rng.float(70, 190), rng.float(40, 110), rng.float(70, 150)), i % 2 ? dark : hull);
+    block.position.set(rng.float(-110, 110), rng.float(-50, 70), -240 + i * 130);
+    g.add(block);
+  }
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(230, 24, 320), dark);
+    wing.position.set(s * 160, -10, 180);
+    g.add(wing);
+    const engine = new THREE.Mesh(new THREE.CylinderGeometry(38, 44, 120, 14), hull);
+    engine.rotation.x = Math.PI / 2;
+    engine.position.set(s * 90, 0, 470);
+    g.add(engine);
+    const flame = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: radialSprite('#8fd6ff', 128, 1.8), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+    }));
+    flame.position.set(s * 90, 0, 545);
+    flame.scale.setScalar(180);
+    g.add(flame);
+  }
+  for (let i = 0; i < 26; i++) {
+    const light = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 6), lit);
+    light.position.set(rng.float(-100, 100), rng.float(-40, 60), rng.float(-420, 420));
+    g.add(light);
+  }
+  return g;
+}
+
+export function buildCargoPod(color = '#ffb066') {
+  const g = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color: '#9aa4b0', metalness: 0.6, roughness: 0.45 });
+  const glowMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(26, 26, 42), shell);
+  g.add(body);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(28, 5, 5), glowMat);
+  g.add(stripe);
+  const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(5, 28, 5), glowMat);
+  g.add(stripe2);
+  return g;
+}
+
+export function buildBlackHole() {
+  const g = new THREE.Group();
+  const hole = new THREE.Mesh(
+    new THREE.SphereGeometry(420, 48, 32),
+    new THREE.MeshBasicMaterial({ color: '#000000' })
+  );
+  g.add(hole);
+
+  const disc = new THREE.Mesh(
+    new THREE.RingGeometry(520, 1750, 128),
+    new THREE.MeshBasicMaterial({
+      color: '#ffb066', side: THREE.DoubleSide, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  );
+  disc.rotation.x = Math.PI / 2.1;
+  g.add(disc);
+
+  const disc2 = new THREE.Mesh(
+    new THREE.RingGeometry(470, 900, 96),
+    new THREE.MeshBasicMaterial({
+      color: '#8fd6ff', side: THREE.DoubleSide, transparent: true, opacity: 0.45,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  );
+  disc2.rotation.x = Math.PI / 2.4;
+  disc2.rotation.z = 0.6;
+  g.add(disc2);
+
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: radialSprite('#ffd9a0', 256, 2.6), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+  }));
+  halo.scale.setScalar(3400);
+  g.add(halo);
+
+  g.userData.discs = [disc, disc2];
+  return g;
+}
+
+// Aurora ribbons for night skies on cold / exotic worlds.
+export function buildAurora(color = '#7dffd0') {
+  const g = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const geo = new THREE.PlaneGeometry(1600, 260, 40, 1);
+    const pos = geo.attributes.position;
+    for (let v = 0; v < pos.count; v++) {
+      pos.setZ(v, Math.sin(pos.getX(v) * 0.008 + i) * 90);
+    }
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.16, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const ribbon = new THREE.Mesh(geo, mat);
+    ribbon.position.set(0, 420 + i * 90, -500 - i * 160);
+    ribbon.rotation.x = -0.35;
+    g.add(ribbon);
+  }
+  return g;
+}

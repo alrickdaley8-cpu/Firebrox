@@ -4,11 +4,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { generateGalaxy, buildSystem, RESOURCES } from './universe.js';
+import { generateGalaxy, buildSystem, RESOURCES, distance } from './universe.js';
 import {
   state, stats, saveGame, loadGame, clearSave, hasSave,
-  hasResources, spendResources,
 } from './state.js';
+import * as missions from './missions.js';
 import { input } from './input.js';
 import { ui } from './ui.js';
 import { SpaceMode } from './space.js';
@@ -41,18 +41,21 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const game = {
   mode: 'title',
   running: false,
   paused: false,
-  galaxy: generateGalaxy('firebrox-prime', 320),
+  galaxy: generateGalaxy(state.galaxySeed, 320),
   system: null,
   space: new SpaceMode(),
   surface: new SurfaceMode(),
   map: null,
   docked: false,
+  crafting: false,
+  settingsOpen: false,
+  photoMode: false,
 };
 
 game.map = new GalaxyMap(game.galaxy, (sys) => warpTo(sys.id));
@@ -73,6 +76,22 @@ const composers = {
   space: makeComposer(game.space.scene, game.space.camera, 0.85, 0.55, 0.62),
   surface: makeComposer(game.surface.scene, game.surface.camera, 0.34, 0.5, 0.95),
 };
+
+function applySettings() {
+  const s = state.settings;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75) * s.renderScale);
+  renderer.shadowMap.enabled = s.shadows;
+  game.surface.sun.castShadow = s.shadows;
+  composers.space.bloom.strength = 0.85 * s.bloom;
+  composers.surface.bloom.strength = 0.34 * s.bloom;
+  game.surface.camera.fov = s.fov;
+  game.surface.camera.updateProjectionMatrix();
+  input.sensitivity = s.sensitivity;
+  input.invertY = s.invertY;
+  audio.setVolumes(s.music, s.sfx);
+  resize();
+}
+ui.onSettingsChange = applySettings;
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -142,6 +161,7 @@ function launchToSpace() {
 
 function dockAtStation() {
   game.docked = true;
+  missions.syncGather();
   input.unlock();
   state.shipHealth = 100;
   state.shields = stats.shieldMax;
@@ -164,18 +184,59 @@ function dockAtStation() {
   });
 }
 
-function craftWarpCell() {
-  const cost = { dihydrogen: 100, ferrite: 50 };
-  if (!hasResources(cost)) {
-    ui.log('Cannot craft Warp Cell — need 100 Di-hydrogen + 50 Ferrite Dust', 'bad');
-    audio.error();
-    return;
-  }
-  spendResources(cost);
-  state.inventory.warpcell += 1;
-  ui.flashSlot('warpcell');
-  ui.log('WARP CELL CRAFTED', 'good');
-  audio.discovery();
+function blackHoleJump() {
+  const cur = game.galaxy.systems[state.systemId];
+  // fall inward: pick a system much closer to the core, at most 2500 ly away
+  const candidates = game.galaxy.systems
+    .filter((s) => s.distFromCore < cur.distFromCore * 0.72 && s.id !== cur.id)
+    .sort((a, b) => distance(cur.pos, a.pos) - distance(cur.pos, b.pos));
+  const target = candidates[Math.floor(Math.random() * Math.min(6, candidates.length))] || game.galaxy.systems[game.galaxy.coreId];
+  const d = distance(cur.pos, target.pos);
+  state.lightYears += d;
+  state.coreJumps++;
+  state.shipHealth = Math.max(12, state.shipHealth - 25);
+  ui.warpFlash(1400);
+  audio.sweep(2400, 60, 2.2, 'sawtooth', 0.35);
+  ui.loading('Falling through the singularity…');
+  setTimeout(() => {
+    enterSystem(target.id);
+    ui.loading(null);
+    ui.log(`SINGULARITY TRANSIT — ${d.toFixed(0)} ly toward the core. Hull scarred.`, 'warn');
+    input.lock();
+  }, 900);
+}
+
+function enterNewGalaxy() {
+  state.galaxyIndex++;
+  state.galaxySeed = `firebrox-${state.galaxyIndex}`;
+  game.galaxy = generateGalaxy(state.galaxySeed, 320);
+  game.map = new GalaxyMap(game.galaxy, (sys) => warpTo(sys.id));
+  state.visitedSystems = {};
+  state.units += 250000;
+  state.nanites += 1500;
+  state.shipHealth = 100;
+  state.inventory.warpcell = Math.max(state.inventory.warpcell, 3);
+  ui.warpFlash(2400);
+  audio.sweep(60, 3000, 3, 'sine', 0.4);
+  ui.loading('Passing through the galactic core…');
+  setTimeout(() => {
+    enterSystem(Math.floor(Math.random() * game.galaxy.systems.length));
+    ui.loading(null);
+    ui.log(`GALAXY ${state.galaxyIndex + 1} — you broke through the core. +250,000 units, +1500 nanites.`, 'good');
+    input.lock();
+  }, 1400);
+}
+
+function openCrafting() {
+  game.crafting = true;
+  input.unlock();
+  ui.openCraft(() => { game.crafting = false; input.lock(); });
+}
+
+function openSettings() {
+  game.settingsOpen = true;
+  input.unlock();
+  ui.openSettings(() => { game.settingsOpen = false; if (!game.paused) input.lock(); });
 }
 
 function setPaused(v) {
@@ -190,6 +251,8 @@ function startGame(continueSave) {
   document.getElementById('title').classList.add('hidden');
   ui.showHUD(true);
   audio.resume();
+  applySettings();
+  audio.startAmbient();
   ui.loading('Generating star system…');
   setTimeout(() => {
     enterSystem(state.systemId || 0);
@@ -205,6 +268,7 @@ function startGame(continueSave) {
 document.getElementById('btn-new').onclick = () => { clearSave(); startGame(false); };
 document.getElementById('btn-continue').onclick = () => startGame(true);
 document.getElementById('btn-resume').onclick = () => setPaused(false);
+document.getElementById('btn-settings').onclick = () => openSettings();
 document.getElementById('btn-save').onclick = () => {
   const ok = saveGame();
   ui.log(ok ? 'JOURNEY SAVED' : 'SAVE FAILED', ok ? 'good' : 'bad');
@@ -223,6 +287,14 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Escape' || e.code === 'KeyE') ui.closeTrade();
     return;
   }
+  if (game.crafting) {
+    if (e.code === 'Escape' || e.code === 'KeyC') ui.closeCraft();
+    return;
+  }
+  if (game.settingsOpen) {
+    if (e.code === 'Escape') ui.closeSettings();
+    return;
+  }
   switch (e.code) {
     case 'KeyM':
       if (game.mode !== 'space') { ui.log('Galaxy map is only available in flight', 'warn'); break; }
@@ -235,7 +307,12 @@ addEventListener('keydown', (e) => {
         audio.error();
       }
       break;
-    case 'KeyC': craftWarpCell(); break;
+    case 'KeyC': openCrafting(); break;
+    case 'KeyH':
+      game.photoMode = !game.photoMode;
+      ui.showHUD(!game.photoMode);
+      ui.log(game.photoMode ? 'PHOTO MODE — press H to restore the HUD' : '', '');
+      break;
     case 'Tab': e.preventDefault(); setPaused(!game.paused); break;
     case 'Escape': if (game.map.open) game.map.hide(); break;
     case 'KeyP': renderer.toneMappingExposure = renderer.toneMappingExposure > 1 ? 0.85 : 1.05; break;
@@ -247,6 +324,7 @@ addEventListener('keydown', (e) => {
 setInterval(() => { if (game.running && !game.paused) saveGame(); }, 30000);
 
 // ------------------------------------------------------------------ loop
+let gatherTick = 1;
 let lastFrameTime = performance.now();
 let lastShield = state.shields;
 
@@ -263,19 +341,26 @@ function loop() {
   }
 
   const active = game.mode === 'space' ? game.space : game.surface;
-  const blocked = game.paused || game.map.open || game.docked;
+  const blocked = game.paused || game.map.open || game.docked || game.crafting || game.settingsOpen;
   input.enabled = !blocked && input.locked;
 
   if (!blocked) {
     state.playTime += dt;
     active.update(dt);
     if (game.mode === 'space') {
-      if (game.space.landRequest) landOn(game.space.landRequest);
+      if (game.space.coreRequest) enterNewGalaxy();
+      else if (game.space.blackHoleRequest) blackHoleJump();
+      else if (game.space.landRequest) landOn(game.space.landRequest);
       else if (game.space.dockRequest) dockAtStation();
     } else if (game.surface.launchRequest) {
       launchToSpace();
     }
     lastShield = state.shields;
+    gatherTick -= dt;
+    if (gatherTick <= 0) {
+      gatherTick = 1;
+      for (const m of missions.syncGather()) ui.missionDone(m);
+    }
   } else {
     input.consumeMouse();
     ui.target(null);
@@ -289,6 +374,7 @@ function loop() {
   composers[game.mode].render();
 }
 
+applySettings();
 resize();
 loop();
 

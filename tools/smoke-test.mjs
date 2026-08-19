@@ -163,6 +163,122 @@ for (const planet of sys.planets.slice(0, 3)) {
     'life', state.life.toFixed(0), 'hazard', state.hazardProtection.toFixed(0), 'jet', state.jetpack.toFixed(0));
 }
 
+// ---- NEW SYSTEMS: sentinels, missions, crafting, shipyard, black holes ----
+const missions = await import(ROOT + '/src/missions.js');
+const crafting = await import(ROOT + '/src/crafting.js');
+const { buyShip, SHIPS } = await import(ROOT + '/src/state.js');
+
+// missions
+const board = missions.generateBoard(galaxy.systems[0]);
+console.log('mission board:', board.map((m) => `${m.title} (${m.desc})`).join(' | '));
+for (const m of board) missions.accept(m);
+console.log('accepted:', state.missions.length, '(cap 4)');
+missions.event('scan_creature', 99);
+missions.event('kill_pirate', 99);
+missions.event('kill_sentinel', 99);
+missions.event('ruin', 99);
+missions.event('scan_planet', 99);
+state.inventory.ferrite = 500; state.inventory.carbon = 500; state.inventory.chromatic = 500;
+state.inventory.platinum = 500; state.inventory.sodium = 500; state.inventory.dihydrogen = 500;
+missions.syncGather();
+const ready = state.missions.filter(missions.isComplete).length;
+let claimed = 0;
+for (const m of [...state.missions]) if (missions.claim(m)) claimed++;
+console.log('missions complete:', ready, 'claimed:', claimed, 'units now', Math.round(state.units), 'nanites', state.nanites);
+
+// crafting
+const before = { ...state.inventory };
+let crafts = 0;
+for (const r of crafting.RECIPES) if (crafting.craft(r)) crafts++;
+console.log('recipes craftable:', crafts, '/', crafting.RECIPES.length, '· warp cells', state.inventory.warpcell);
+
+// shipyard
+state.units = 500000;
+for (const k of Object.keys(SHIPS)) buyShip(k);
+console.log('ships owned:', state.ownedShips.join(', '), '· flying', state.ship,
+  '· jump range', stats.jumpRange, '· stack', stats.stackLimit);
+space.update(1 / 60);
+console.log('ship model synced to class:', space.shipClass === state.ship);
+
+// sentinels + on-foot combat
+ui.mode = 'surface';
+const combatPlanet = sys.planets.find((p) => p.sentinels !== 'Passive') || sys.planets[0];
+surface.setPlanet(combatPlanet, sys);
+surface.sentinelAggression = 1.5;
+surface.raiseWanted(1.2);
+for (let i = 0; i < 400; i++) { surface.scene.updateMatrixWorld(true); surface.update(1 / 60); }
+console.log('sentinels spawned:', surface.sentinels.length, 'wanted', surface.wanted.toFixed(2),
+  'suit shield', state.suitShield.toFixed(0), 'life', state.life.toFixed(0));
+input.mouseRight = true;
+for (let i = 0; i < 600; i++) {
+  surface.scene.updateMatrixWorld(true);
+  const t = surface.sentinels[0];
+  if (t) {
+    const dx = t.mesh.position.x - surface.pos.x, dz = t.mesh.position.z - surface.pos.z;
+    surface.yaw = Math.atan2(-dx, -dz);
+    surface.pitch = Math.atan2(t.mesh.position.y - surface.pos.y, Math.hypot(dx, dz));
+  }
+  surface.update(1 / 60);
+}
+input.mouseRight = false;
+console.log('sentinel kills:', state.sentinelKills, 'nanites', state.nanites, 'deaths', surface.deaths);
+
+// black hole + core
+const bhSys = galaxy.systems.find((s) => s.hasBlackHole);
+ui.mode = 'space';
+space.setSystem(buildSystem(bhSys));
+console.log('black hole present:', !!space.blackHole, 'freighter:', !!space.freighter, 'pods:', space.pods.length);
+if (space.blackHole) {
+  space.ship.position.copy(space.blackHole.position).add({ x: 0, y: 0, z: 900 });
+  space.throttle = 0; space.speed = 0;
+  let pulled = false;
+  for (let i = 0; i < 200; i++) { space.update(1 / 60); if (space.blackHoleRequest) pulled = true; }
+  console.log('black hole pulled ship in:', pulled);
+}
+const coreSys = galaxy.systems.find((s) => s.isCore);
+space.setSystem(buildSystem(coreSys));
+space.ship.position.set(1000, 0, 1000);
+space.throttle = 0; space.speed = 0;
+let coreHit = false;
+for (let i = 0; i < 120; i++) { space.update(1 / 60); if (space.coreRequest) coreHit = true; }
+console.log('core system:', coreSys.name, '· core trigger:', coreHit);
+
+// pods shootable
+space.setSystem(buildSystem(bhSys));
+if (space.pods.length) {
+  const pod = space.pods[0];
+  space.ship.position.copy(pod.position).add({ x: 0, y: 0, z: 260 });
+  space.faceShip(pod.position);
+  space.throttle = 0; space.speed = 0;
+  input.mouseDown = true;
+  const podsBefore = space.pods.length;
+  for (let i = 0; i < 150; i++) space.update(1 / 60);
+  input.mouseDown = false;
+  console.log('cargo pods:', podsBefore, '->', space.pods.length);
+}
+
+// settings
+ui.openSettings(() => {});
+document.querySelector('[data-set="fov"]').value = '95';
+document.querySelector('[data-set="fov"]').dispatchEvent(new window.Event('input'));
+document.querySelector('[data-toggle="invertY"]').click();
+ui.closeSettings();
+console.log('settings fov', state.settings.fov, 'invertY', state.settings.invertY);
+
+// crafting UI
+ui.openCraft(() => {});
+document.querySelector('[data-craft]')?.click();
+ui.closeCraft();
+console.log('crafting UI ok');
+
+// station tabs (missions + shipyard render)
+ui.openTrade(galaxy.systems[0], () => {});
+console.log('board rows:', document.querySelectorAll('#trade-missions [data-accept]').length,
+  '· shipyard cards:', document.querySelectorAll('#trade-ships [data-ship]').length);
+document.querySelector('#trade-missions [data-accept]')?.click();
+ui.closeTrade();
+console.log('missions active after accept:', state.missions.length);
+
 // ---- MAP + SAVE ------------------------------------------------------
 map.show(0);
 map.selected = 5;

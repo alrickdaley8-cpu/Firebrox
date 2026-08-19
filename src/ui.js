@@ -1,12 +1,15 @@
 // HUD / overlay management.
-import { state, stats, UPGRADES, buyUpgrade } from './state.js';
+import { state, stats, UPGRADES, SHIPS, DEFAULT_SETTINGS, buyUpgrade, buyShip, renameDiscovery } from './state.js';
 import { RESOURCES, ECONOMIES } from './universe.js';
+import { RECIPES, canCraft, craft } from './crafting.js';
+import * as missions from './missions.js';
 
 const $ = (id) => document.getElementById(id);
 
 const BAR_DEFS = [
   { key: 'life', label: 'Life Support', color: '#63e6ff', max: () => 100 },
   { key: 'hazardProtection', label: 'Hazard Protection', color: '#ff9f43', max: () => 100 },
+  { key: 'suitShield', label: 'Exosuit Shield', color: '#7dffd0', modes: ['surface'], max: () => stats.suitShieldMax },
   { key: 'jetpack', label: 'Jetpack', color: '#c48fff', modes: ['surface'], max: () => 100 },
   { key: 'shipHealth', label: 'Ship Integrity', color: '#9dffc4', modes: ['space'], max: () => 100 },
   { key: 'shields', label: 'Deflector Shield', color: '#ffe066', modes: ['space'], max: () => stats.shieldMax },
@@ -33,6 +36,21 @@ export const ui = {
       c.width = w * scale; c.height = h * scale;
     }
     $('btn-trade-close').onclick = () => this.closeTrade();
+    $('btn-craft-close').onclick = () => this.closeCraft();
+    $('btn-settings-close').onclick = () => this.closeSettings();
+    $('btn-settings-reset').onclick = () => {
+      Object.assign(state.settings, DEFAULT_SETTINGS);
+      this.renderSettings();
+      this.onSettingsChange?.();
+    };
+    document.querySelectorAll('#trade .tab').forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll('#trade .tab').forEach((b) => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('#trade .tab-page').forEach((p) => {
+          p.classList.toggle('hidden', p.dataset.page !== btn.dataset.tab);
+        });
+      };
+    });
   },
 
   // Cache every HUD node once — the loop then only touches what changed.
@@ -42,6 +60,8 @@ export const ui = {
       ly: $('hud-ly'), mode: $('hud-mode'), system: $('hud-system'),
       planetLabel: $('hud-planet-label'), planet: $('hud-planet'), conditions: $('hud-conditions'),
       radarWrap: $('radar-wrap'), compassWrap: $('compass-wrap'),
+      missionTracker: $('mission-tracker'), missionList: $('mission-list'),
+      sentinelAlert: $('sentinel-alert'), sentinelPips: $('sentinel-pips'),
       bars: {}, slots: {},
     };
     for (const b of BAR_DEFS) {
@@ -134,6 +154,30 @@ export const ui = {
         ref.qt.textContent = q;
         ref.slot.classList.toggle('full', q >= limit);
       }
+    }
+
+    // mission tracker
+    const sig = state.missions.map((m) => `${m.key}:${m.progress}`).join('|');
+    if (this.last.missionSig !== sig) {
+      this.last.missionSig = sig;
+      r.missionTracker.classList.toggle('hidden', state.missions.length === 0);
+      r.missionList.innerHTML = state.missions.map((m) => {
+        const done = m.progress >= m.target;
+        return `<div class="mission ${done ? 'done' : ''}">
+          <div class="m-title">${m.title}</div>
+          <div class="m-desc">${m.desc}</div>
+          <div class="m-bar"><i style="width:${Math.min(100, (m.progress / m.target) * 100)}%"></i></div>
+          <div class="m-foot">${m.progress}/${m.target}${done ? ' — return to a station' : ''}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // sentinel alert
+    const lvl = info?.sentinelLevel || 0;
+    if (this.last.sentinelLvl !== lvl) {
+      this.last.sentinelLvl = lvl;
+      r.sentinelAlert.classList.toggle('hidden', lvl <= 0);
+      r.sentinelPips.textContent = '▲'.repeat(lvl);
     }
 
     if (this.last.hudMode !== this.mode) {
@@ -284,6 +328,94 @@ export const ui = {
     });
   },
 
+  missionDone(m) {
+    this.log(`MISSION READY — ${m.title} · claim at any station`, 'good');
+  },
+
+  // ---------------------------------------------------------- crafting
+  openCraft(onClose) {
+    this.onCraftClose = onClose;
+    $('craft').classList.remove('hidden');
+    this.renderCraft();
+  },
+  closeCraft() {
+    $('craft').classList.add('hidden');
+    this.onCraftClose?.();
+  },
+  renderCraft() {
+    $('craft-list').innerHTML = RECIPES.map((r, i) => {
+      const ok = canCraft(r);
+      const cost = Object.entries(r.cost).map(([k, v]) => `${v} ${RESOURCES[k]?.label || k}`).join(' + ');
+      return `<div class="recipe ${ok ? '' : 'locked'}">
+        <div class="r-head">${r.label}</div>
+        <div class="r-desc">${r.desc}</div>
+        <div class="r-cost">${cost}</div>
+        <button data-craft="${i}" ${ok ? '' : 'disabled'}>Craft</button>
+      </div>`;
+    }).join('');
+    $('craft-list').querySelectorAll('[data-craft]').forEach((btn) => {
+      btn.onclick = () => {
+        const r = RECIPES[Number(btn.dataset.craft)];
+        const result = craft(r);
+        if (result) {
+          this.log(`${r.label} — ${result}`, 'good');
+          for (const k of Object.keys(r.out || {})) this.flashSlot(k);
+        } else this.log('Missing materials', 'bad');
+        this.renderCraft();
+      };
+    });
+  },
+
+  // ---------------------------------------------------------- settings
+  openSettings(onClose) {
+    this.onSettingsClose = onClose;
+    $('settings').classList.remove('hidden');
+    this.renderSettings();
+  },
+  closeSettings() {
+    $('settings').classList.add('hidden');
+    this.onSettingsClose?.();
+  },
+  renderSettings() {
+    const s = state.settings;
+    const rows = [
+      { key: 'fov', label: 'Field of view', min: 60, max: 110, step: 1 },
+      { key: 'sensitivity', label: 'Mouse sensitivity', min: 0.25, max: 3, step: 0.05 },
+      { key: 'bloom', label: 'Bloom intensity', min: 0, max: 2, step: 0.05 },
+      { key: 'renderScale', label: 'Render scale', min: 0.5, max: 2, step: 0.05 },
+      { key: 'music', label: 'Music volume', min: 0, max: 1, step: 0.05 },
+      { key: 'sfx', label: 'Effects volume', min: 0, max: 1, step: 0.05 },
+    ];
+    $('settings-list').innerHTML = rows.map((r) => `
+      <div class="setting">
+        <label>${r.label}<span class="mono" data-out="${r.key}">${Number(s[r.key]).toFixed(2)}</span></label>
+        <input type="range" data-set="${r.key}" min="${r.min}" max="${r.max}" step="${r.step}" value="${s[r.key]}" />
+      </div>`).join('') + `
+      <div class="setting toggle">
+        <label>Invert mouse Y</label>
+        <input type="checkbox" data-toggle="invertY" ${s.invertY ? 'checked' : ''} />
+      </div>
+      <div class="setting toggle">
+        <label>Shadows</label>
+        <input type="checkbox" data-toggle="shadows" ${s.shadows ? 'checked' : ''} />
+      </div>`;
+
+    $('settings-list').querySelectorAll('[data-set]').forEach((el) => {
+      el.oninput = () => {
+        state.settings[el.dataset.set] = Number(el.value);
+        const out = $('settings-list').querySelector(`[data-out="${el.dataset.set}"]`);
+        if (out) out.textContent = Number(el.value).toFixed(2);
+        this.onSettingsChange?.();
+      };
+    });
+    $('settings-list').querySelectorAll('[data-toggle]').forEach((el) => {
+      el.onchange = () => {
+        state.settings[el.dataset.toggle] = el.checked;
+        this.onSettingsChange?.();
+      };
+    });
+  },
+
   renderDiscoveries() {
     const items = Object.entries(state.discoveries).sort((a, b) => b[1].when - a[1].when);
     const counts = items.reduce((acc, [, d]) => { acc[d.type] = (acc[d.type] || 0) + 1; return acc; }, {});
@@ -295,8 +427,17 @@ export const ui = {
       <span>${state.kills} pirates downed</span>
       <span>${state.lightYears.toFixed(1)} ly travelled</span>`;
     $('discovery-list').innerHTML = items.length
-      ? items.map(([, d]) => `<div class="disc"><span>${d.name}</span><span>${d.type}</span></div>`).join('')
+      ? items.map(([k, d]) => `<div class="disc">
+          <input class="disc-name" data-rename="${k}" value="${String(d.name).replace(/"/g, '&quot;')}" />
+          <span>${d.type}</span>
+        </div>`).join('')
       : '<div class="empty">No discoveries logged. Go find something.</div>';
+    $('discovery-list').querySelectorAll('[data-rename]').forEach((el) => {
+      el.onchange = () => {
+        renameDiscovery(el.dataset.rename, el.value);
+        this.log(`Renamed to ${el.value}`, 'good');
+      };
+    });
   },
 
   // ---------------------------------------------------------- station trade
@@ -354,6 +495,75 @@ export const ui = {
         <button data-upg="${k}" ${maxed || state.units < cost ? 'disabled' : ''}>${maxed ? 'MAX' : cost.toLocaleString() + ' units'}</button>
       </div>`;
     }).join('');
+
+    // ---- mission board
+    const board = missions.generateBoard(sys);
+    const active = new Set(state.missions.map((m) => m.key));
+    const claimable = state.missions.filter((m) => missions.isComplete(m));
+    $('trade-missions').innerHTML = `
+      ${claimable.length ? `<div class="panel-title">Ready to claim</div>` + claimable.map((m) => `
+        <div class="mission-row done">
+          <div><b>${m.title}</b><span>${m.desc} — complete</span></div>
+          <button data-claim="${m.key}">Claim ${m.reward.units.toLocaleString()} units</button>
+        </div>`).join('') : ''}
+      <div class="panel-title" style="margin-top:10px">Available contracts</div>
+      ${board.map((m) => `
+        <div class="mission-row">
+          <div><b>${m.title}</b><span>${m.desc} · ${m.giver}</span></div>
+          <button data-accept="${m.key}" ${active.has(m.key) ? 'disabled' : ''}>
+            ${active.has(m.key) ? 'Accepted' : `${m.reward.units.toLocaleString()} u + ${m.reward.nanites} nanites`}
+          </button>
+        </div>`).join('')}`;
+
+    $('trade-missions').querySelectorAll('[data-accept]').forEach((btn) => {
+      btn.onclick = () => {
+        const m = board.find((x) => x.key === btn.dataset.accept);
+        const res = missions.accept(m);
+        if (res === 'full') this.log('Mission log is full (4 max)', 'bad');
+        else if (res === 'ok') {
+          this.log(`ACCEPTED — ${m.title}`, 'good');
+          missions.syncGather();
+        }
+        this.renderTrade();
+      };
+    });
+    $('trade-missions').querySelectorAll('[data-claim]').forEach((btn) => {
+      btn.onclick = () => {
+        const m = state.missions.find((x) => x.key === btn.dataset.claim);
+        const done = missions.claim(m);
+        if (done) this.log(`MISSION COMPLETE — ${done.title} · +${done.reward.units.toLocaleString()} units, +${done.reward.nanites} nanites`, 'good');
+        else this.log('Cannot claim — deliver the goods first', 'bad');
+        this.renderTrade();
+      };
+    });
+
+    // ---- shipyard
+    $('trade-ships').innerHTML = Object.entries(SHIPS).map(([k, def]) => {
+      const owned = state.ownedShips.includes(k);
+      const active2 = state.ship === k;
+      return `<div class="shipcard ${active2 ? 'active' : ''}">
+        <div class="s-head">${def.label}</div>
+        <div class="s-desc">${def.desc}</div>
+        <div class="s-stats">
+          <span>Speed ${def.speed.toFixed(2)}×</span>
+          <span>Damage ${def.damage.toFixed(2)}×</span>
+          <span>Shield ${def.shield.toFixed(2)}×</span>
+          <span>Cargo ${def.cargo >= 0 ? '+' : ''}${def.cargo}</span>
+          <span>Warp +${def.warp} ly</span>
+        </div>
+        <button data-ship="${k}" ${active2 ? 'disabled' : ''}>
+          ${active2 ? 'In use' : owned ? 'Switch' : def.price.toLocaleString() + ' units'}
+        </button>
+      </div>`;
+    }).join('');
+    $('trade-ships').querySelectorAll('[data-ship]').forEach((btn) => {
+      btn.onclick = () => {
+        const res = buyShip(btn.dataset.ship);
+        if (res === 'poor') this.log('Not enough units for that ship', 'bad');
+        else this.log(`Now flying the ${SHIPS[btn.dataset.ship].label}`, 'good');
+        this.renderTrade();
+      };
+    });
 
     $('trade-units').textContent = Math.floor(state.units).toLocaleString();
 

@@ -5,7 +5,11 @@ import { RNG, hash3 } from './rng.js';
 import { input } from './input.js';
 import { state, stats, addResource, discover, spendResources, hasResources } from './state.js';
 import { ui } from './ui.js';
-import { buildShip, radialSprite, buildMonolith, buildCrashedShip, buildOutpost, makeStarfield } from './assets3d.js';
+import {
+  buildShip, radialSprite, buildMonolith, buildCrashedShip, buildOutpost,
+  makeStarfield, buildSentinel, buildAurora,
+} from './assets3d.js';
+import * as missions from './missions.js';
 import { makeName, loreLine } from './universe.js';
 import { audio } from './audio.js';
 
@@ -33,6 +37,15 @@ export class SurfaceMode {
     this.scanTimer = 0;
     this.time = 0;
     this.dayT = 0.28;
+    this.sentinels = [];
+    this.wanted = 0;
+    this.wantedCool = 0;
+    this.sentinelSpawnTimer = 0;
+    this.toolCooldown = 0;
+    this.bolts = [];
+    this.boltPool = [];
+    this.hitTimer = 0;
+    this.deaths = 0;
     this.bob = 0;
     this.stepTimer = 0;
 
@@ -55,6 +68,32 @@ export class SurfaceMode {
 
     this.stars = makeStarfield(2500, 3000, 21);
     this.scene.add(this.stars);
+
+    this.aurora = buildAurora('#7dffd0');
+    this.aurora.visible = false;
+    this.scene.add(this.aurora);
+
+    // shooting stars
+    this.meteors = [];
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.6, 26, 4, 6),
+        new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9 })
+      );
+      m.visible = false;
+      this.scene.add(m);
+      this.meteors.push({ mesh: m, life: 0, vel: new THREE.Vector3() });
+    }
+
+    // multi-tool bolts
+    this.boltGeo = new THREE.CapsuleGeometry(0.06, 1.1, 4, 6);
+    this.boltMat = new THREE.MeshBasicMaterial({ color: '#9dffc4' });
+    this.boltMatHostile = new THREE.MeshBasicMaterial({ color: '#ff5a3c' });
+    this.sentinelPing = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: radialSprite('#ff4d4d', 64, 2), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+    }));
+    this.sentinelPing.visible = false;
+    this.scene.add(this.sentinelPing);
 
     // water with animated waves
     this.waterUniforms = { uTime: { value: 0 }, uColor: { value: new THREE.Color('#1f6f8f') } };
@@ -171,6 +210,19 @@ export class SurfaceMode {
     this.weather.material.color.set(frozen ? '#ffffff' : wet ? '#9fd8ff' : b.fog);
     this.weather.material.size = frozen ? 0.55 : wet ? 0.32 : 0.4;
     this.weather.material.opacity = dusty ? 0.35 : 0.65;
+
+    this.auroraActive = ['frozen', 'exotic', 'crystalline', 'crimson'].includes(planet.biomeKey) || rng.chance(0.25);
+    this.aurora.children.forEach((r) => r.material.color.set(this.crystalColor));
+
+    // sentinels
+    for (const s2 of this.sentinels) this.scene.remove(s2.mesh);
+    this.sentinels = [];
+    this.wanted = 0;
+    this.wantedCool = 0;
+    this.sentinelAggression = { Passive: 0.25, Low: 0.6, Aggressive: 1.25 }[planet.sentinels] ?? 0.5;
+    for (const b2 of this.bolts) { b2.mesh.visible = false; this.boltPool.push(b2); }
+    this.bolts.length = 0;
+    state.suitShield = stats.suitShieldMax;
 
     // clear world
     for (const key of [...this.chunks.keys()]) this.removeChunk(key);
@@ -522,6 +574,8 @@ export class SurfaceMode {
         sp *= 2.3;
       } else if (c.temperament === 'Curious' && away < 60) {
         dir = Math.atan2(this.pos.z - c.mesh.position.z, this.pos.x - c.mesh.position.x);
+      } else if (c.fed && away > 6 && away < 90) {
+        dir = Math.atan2(this.pos.z - c.mesh.position.z, this.pos.x - c.mesh.position.x);
       } else if (c.temperament === 'Territorial' && away < 22) {
         dir = Math.atan2(this.pos.z - c.mesh.position.z, this.pos.x - c.mesh.position.x);
         sp *= 1.6;
@@ -540,6 +594,191 @@ export class SurfaceMode {
       }
       c.mesh.rotation.y = -dir + Math.PI / 2;
     }
+  }
+
+  // -------------------------------------------------- sentinels & combat
+  raiseWanted(amount, reason) {
+    const before = Math.floor(this.wanted);
+    this.wanted = Math.min(3, this.wanted + amount * this.sentinelAggression);
+    this.wantedCool = 14;
+    const now = Math.floor(this.wanted);
+    if (now > before && now >= 1) {
+      ui.log(now === 1
+        ? 'SENTINELS ALERTED — drones inbound'
+        : `SENTINEL ESCALATION — level ${now}`, 'bad');
+      audio.error();
+      this.sentinelSpawnTimer = 0;
+    }
+  }
+
+  spawnSentinel() {
+    const mesh = buildSentinel(1 + Math.random() * 0.4);
+    const a = Math.random() * Math.PI * 2;
+    const d = 50 + Math.random() * 60;
+    mesh.position.set(this.pos.x + Math.cos(a) * d, 0, this.pos.z + Math.sin(a) * d);
+    mesh.position.y = this.height(mesh.position.x, mesh.position.z) + 12;
+    this.scene.add(mesh);
+    this.sentinels.push({ mesh, hp: 28, cooldown: 1 + Math.random(), bob: Math.random() * 6 });
+  }
+
+  updateSentinels(dt) {
+    // wanted level decays when you keep your head down
+    this.wantedCool -= dt;
+    if (this.wantedCool <= 0 && this.wanted > 0) {
+      this.wanted = Math.max(0, this.wanted - dt * 0.12);
+      if (this.wanted <= 0 && this.sentinels.length === 0) ui.log('Sentinels have lost interest', 'good');
+    }
+
+    const wantLevel = Math.floor(this.wanted);
+    const desired = wantLevel === 0 ? 0 : wantLevel * 2;
+    this.sentinelSpawnTimer -= dt;
+    if (this.sentinels.length < desired && this.sentinelSpawnTimer <= 0) {
+      this.sentinelSpawnTimer = 2.4;
+      this.spawnSentinel();
+    }
+
+    for (let i = this.sentinels.length - 1; i >= 0; i--) {
+      const s = this.sentinels[i];
+      const toPlayer = this.pos.clone().sub(s.mesh.position);
+      const d = toPlayer.length();
+      toPlayer.normalize();
+      s.bob += dt * 2.4;
+
+      // hover, keep 14-26m away
+      const speed = d > 26 ? 13 : d < 12 ? -9 : 3;
+      s.mesh.position.addScaledVector(toPlayer, speed * dt);
+      const ground = this.height(s.mesh.position.x, s.mesh.position.z);
+      const targetY = Math.max(ground + 9, this.pos.y + 4) + Math.sin(s.bob) * 0.8;
+      s.mesh.position.y += (targetY - s.mesh.position.y) * Math.min(1, dt * 2.5);
+      this._lookAtHelper(s.mesh, this.pos);
+
+      s.cooldown -= dt;
+      if (s.cooldown <= 0 && d < 42) {
+        s.cooldown = 1.3 + Math.random() * 0.9;
+        const from = s.mesh.position.clone();
+        const aim = this.pos.clone().sub(from).normalize();
+        this.fireBolt(from, aim, true, 9);
+      }
+
+      if (d > 420) { this.scene.remove(s.mesh); this.sentinels.splice(i, 1); }
+    }
+  }
+
+  _lookAtHelper(obj, target) {
+    const m = new THREE.Matrix4().lookAt(obj.position, target, new THREE.Vector3(0, 1, 0));
+    obj.quaternion.setFromRotationMatrix(m);
+  }
+
+  fireBolt(origin, dir, hostile, dmg) {
+    let b = this.boltPool.pop();
+    if (!b) {
+      const mesh = new THREE.Mesh(this.boltGeo, hostile ? this.boltMatHostile : this.boltMat);
+      this.scene.add(mesh);
+      b = { mesh, vel: new THREE.Vector3(), life: 0, dmg: 0, hostile: false };
+    }
+    b.mesh.material = hostile ? this.boltMatHostile : this.boltMat;
+    b.mesh.visible = true;
+    b.mesh.position.copy(origin);
+    b.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    b.vel.copy(dir).multiplyScalar(hostile ? 60 : 110);
+    b.life = 2.2;
+    b.dmg = dmg;
+    b.hostile = hostile;
+    this.bolts.push(b);
+    audio.blip(hostile ? 200 : 640, 0.05, 'square', 0.13);
+  }
+
+  updateBolts(dt) {
+    const seg = (p, a, b) => {
+      const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+      const apx = p.x - a.x, apy = p.y - a.y, apz = p.z - a.z;
+      const len2 = abx * abx + aby * aby + abz * abz;
+      let t = len2 > 0 ? (apx * abx + apy * aby + apz * abz) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const dx = apx - abx * t, dy = apy - aby * t, dz = apz - abz * t;
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    };
+    for (let i = this.bolts.length - 1; i >= 0; i--) {
+      const b = this.bolts[i];
+      const prev = b.mesh.position.clone();
+      b.mesh.position.addScaledVector(b.vel, dt);
+      b.life -= dt;
+      let dead = b.life <= 0;
+
+      if (!dead && b.mesh.position.y < this.height(b.mesh.position.x, b.mesh.position.z)) dead = true;
+
+      if (!dead && b.hostile) {
+        if (seg(this.pos, prev, b.mesh.position) < 1.5) {
+          dead = true;
+          this.damagePlayer(b.dmg);
+        }
+      } else if (!dead) {
+        for (const s of this.sentinels) {
+          if (seg(s.mesh.position, prev, b.mesh.position) < 2.2) {
+            dead = true;
+            s.hp -= b.dmg * stats.toolDamage;
+            if (s.hp <= 0) this.killSentinel(s);
+            break;
+          }
+        }
+      }
+      if (dead) { b.mesh.visible = false; this.boltPool.push(b); this.bolts.splice(i, 1); }
+    }
+
+    // player fire
+    this.toolCooldown -= dt;
+    if (input.mouseRight && this.toolCooldown <= 0) {
+      this.toolCooldown = 0.16;
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+      const from = this.camera.position.clone().addScaledVector(dir, 1.2).add(new THREE.Vector3(0, -0.2, 0));
+      this.fireBolt(from, dir, false, 11);
+      this.raiseWanted(0.02);
+    }
+  }
+
+  killSentinel(s) {
+    this.scene.remove(s.mesh);
+    const i = this.sentinels.indexOf(s);
+    if (i >= 0) this.sentinels.splice(i, 1);
+    state.sentinelKills++;
+    state.nanites += 25;
+    addResource('ferrite', 20);
+    ui.flashSlot('ferrite');
+    ui.log('SENTINEL DESTROYED — +25 nanites, +20 Ferrite', 'good');
+    audio.sweep(500, 80, 0.4, 'sawtooth', 0.25);
+    for (const m of missions.event('kill_sentinel')) ui.missionDone(m);
+    this.raiseWanted(0.5);
+  }
+
+  damagePlayer(dmg) {
+    this.hitTimer = 0.6;
+    ui.damageFlash();
+    if (state.suitShield > 0) {
+      state.suitShield = Math.max(0, state.suitShield - dmg);
+      audio.blip(160, 0.1, 'square', 0.2);
+    } else {
+      state.life = Math.max(0, state.life - dmg * 0.9);
+      audio.blip(95, 0.16, 'square', 0.26);
+      if (state.life <= 0) this.playerDown();
+    }
+  }
+
+  playerDown() {
+    state.life = 40;
+    state.suitShield = stats.suitShieldMax * 0.5;
+    state.hazardProtection = Math.max(state.hazardProtection, 40);
+    this.deaths++;
+    this.wanted = 0;
+    for (const s of this.sentinels) this.scene.remove(s.mesh);
+    this.sentinels = [];
+    this.pos.copy(this.ship.position).add(new THREE.Vector3(0, 4, 0));
+    this.vel.set(0, 0, 0);
+    // drop a slice of cargo
+    for (const k of ['carbon', 'ferrite', 'sodium', 'dihydrogen']) {
+      state.inventory[k] = Math.floor((state.inventory[k] || 0) * 0.75);
+    }
+    ui.log('EXOSUIT FAILURE — revived at your ship, some cargo lost', 'bad');
+    ui.warpFlash(600);
   }
 
   // -------------------------------------------------- day / night / weather
@@ -575,6 +814,32 @@ export class SurfaceMode {
     this.shipLight.intensity = 0.5 + (1 - dayFactor) * 2.2;
 
     this.waterUniforms.uTime.value = this.time;
+
+    // aurora ribbons and shooting stars only at night
+    const night = 1 - dayFactor;
+    this.aurora.visible = this.auroraActive && night > 0.35;
+    if (this.aurora.visible) {
+      this.aurora.position.set(this.pos.x, this.pos.y, this.pos.z);
+      this.aurora.rotation.y += dt * 0.02;
+      this.aurora.children.forEach((r, i) => {
+        r.material.opacity = 0.05 + Math.abs(Math.sin(this.time * 0.3 + i)) * 0.16 * night;
+      });
+    }
+    for (const m of this.meteors) {
+      if (m.life > 0) {
+        m.life -= dt;
+        m.mesh.position.addScaledVector(m.vel, dt);
+        m.mesh.material.opacity = Math.min(1, m.life * 2);
+        if (m.life <= 0) m.mesh.visible = false;
+      } else if (night > 0.5 && Math.random() < dt * 0.12) {
+        m.life = 1.4;
+        m.mesh.visible = true;
+        const a = Math.random() * Math.PI * 2;
+        m.mesh.position.set(this.pos.x + Math.cos(a) * 400, this.pos.y + 260, this.pos.z + Math.sin(a) * 400);
+        m.vel.set(-Math.cos(a) * 220, -60, -Math.sin(a) * 220);
+        m.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), m.vel.clone().normalize());
+      }
+    }
 
     // weather drift
     if (this.weather.visible) {
@@ -662,8 +927,11 @@ export class SurfaceMode {
     this.updateSky(dt);
     this.ensureChunks();
     this.updateCreatures(dt);
+    this.updateSentinels(dt);
+    this.updateBolts(dt);
     this.updateHazards(dt, swimming);
     this.updateTool(dt);
+    this.regenSuit(dt);
     audio.hum(Math.min(0.3, horizSpeed / 70));
     ui.compass(this.yaw, this.waypoints());
   }
@@ -679,6 +947,13 @@ export class SurfaceMode {
       const dx = w.pos.x - this.pos.x, dz = w.pos.z - this.pos.z;
       return { bearing: Math.atan2(dx, -dz), dist: Math.hypot(dx, dz), color: w.color, label: w.label };
     });
+  }
+
+  regenSuit(dt) {
+    this.hitTimer = Math.max(0, this.hitTimer - dt);
+    if (this.hitTimer <= 0 && this.sentinels.length === 0) {
+      state.suitShield = Math.min(stats.suitShieldMax, state.suitShield + dt * 7);
+    }
   }
 
   updateHazards(dt, swimming) {
@@ -759,7 +1034,7 @@ export class SurfaceMode {
       if (!u.used) {
         if (input.down('KeyF')) {
           if (this.scanTimer <= 0) audio.scan();
-          this.scanTimer += dt;
+          this.scanTimer += dt * stats.scanSpeed;
           scanPct = Math.min(1, this.scanTimer / 1.6);
           if (this.scanTimer > 1.6) {
             this.scanTimer = 0;
@@ -769,6 +1044,7 @@ export class SurfaceMode {
             ui.log(`${u.name.toUpperCase()} — ${u.lore}`, 'good');
             ui.log(`Salvage: ${Object.entries(u.loot).map(([k, v]) => `+${v} ${k}`).join(' · ')} · +60 nanites`, 'good');
             audio.discovery();
+            for (const m of missions.event('ruin')) ui.missionDone(m);
           }
         } else this.scanTimer = 0;
       }
@@ -805,11 +1081,14 @@ export class SurfaceMode {
         this.impact.scale.setScalar(0.9 + Math.random() * 0.7);
 
         u.hp -= dt * 1.5 * stats.miningRate;
+        this.raiseWanted(dt * 0.035);
         if (u.hp <= 0) {
-          addResource(u.res, u.amount);
+          const got = addResource(u.res, u.amount);
           ui.flashSlot(u.res);
-          ui.log(`+${u.amount} ${u.res}`, 'good');
+          ui.log(`+${got} ${u.res}`, 'good');
           audio.pickup();
+          this.raiseWanted(0.08);
+          for (const m of missions.syncGather()) ui.missionDone(m);
           this.scene.remove(hitProp.obj);
           const i = this.props.indexOf(hitProp.obj);
           if (i >= 0) this.props.splice(i, 1);
@@ -821,19 +1100,37 @@ export class SurfaceMode {
       }
     } else if (creature && !structure) {
       const known = state.discoveries[creature.key];
+      if (ncd < 14) {
+        prompt = prompt || (creature.fed
+          ? `${creature.name} is following you`
+          : 'Press <b>G</b> to feed (10 Carbon)');
+        if (!creature.fed && input.down('KeyG') && hasResources({ carbon: 10 })) {
+          spendResources({ carbon: 10 });
+          creature.fed = true;
+          creature.temperament = 'Docile';
+          const drop = ['sodium', 'ferrite', 'carbon', 'dihydrogen'][Math.floor(Math.random() * 4)];
+          const amt = 20 + Math.floor(Math.random() * 30);
+          addResource(drop, amt);
+          ui.flashSlot(drop);
+          ui.log(`${creature.name} is grateful — +${amt} ${drop}`, 'good');
+          audio.pickup();
+          input.keys.delete('KeyG');
+        }
+      }
       tName = known ? creature.name.toUpperCase() : 'UNKNOWN LIFEFORM';
       tSub = known
         ? `${creature.diet} · ${creature.temperament} · ${creature.weight} kg`
         : `${Math.round(ncd)} m · hold F to scan`;
       if (input.down('KeyF') && !known) {
         if (this.scanTimer <= 0) audio.scan();
-        this.scanTimer += dt;
+        this.scanTimer += dt * stats.scanSpeed;
         scanPct = Math.min(1, this.scanTimer / 1.1);
         if (this.scanTimer > 1.1) {
           this.scanTimer = 0;
-          discover(creature.key, creature.name, 'creature');
-          ui.log(`LIFEFORM CATALOGUED — ${creature.name} · ${creature.diet} · ${creature.temperament} (+400 units)`, 'good');
+          const reward = discover(creature.key, creature.name, 'creature');
+          ui.log(`LIFEFORM CATALOGUED — ${creature.name} · ${creature.diet} · ${creature.temperament} (+${reward} units)`, 'good');
           audio.discovery();
+          for (const m of missions.event('scan_creature')) ui.missionDone(m);
         }
       } else if (!input.down('KeyF')) this.scanTimer = 0;
     } else if (!structure) {
@@ -854,6 +1151,7 @@ export class SurfaceMode {
       system: this.system.name,
       planetLabel: 'Planet',
       planet: `${p.name} · ${p.biome.label}`,
+      sentinelLevel: Math.floor(this.wanted),
       conditions: `Hazard: ${p.biome.hazard} · ${p.weather}<br>`
         + `Sentinels: ${p.sentinels} · Gravity: ${p.gravity.toFixed(2)}g<br>`
         + `Local time ${clock} · Altitude ${alt} m<br>`

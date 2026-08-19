@@ -2,8 +2,10 @@
 import * as THREE from 'three';
 import {
   planetTextures, makeStarfield, makeNebula, buildShip, buildPirate,
-  buildStation, radialSprite, atmosphereMaterial,
+  buildStation, radialSprite, atmosphereMaterial, buildFreighter,
+  buildCargoPod, buildBlackHole,
 } from './assets3d.js';
+import * as missions from './missions.js';
 import { input } from './input.js';
 import { state, stats, addResource, discover } from './state.js';
 import { ui } from './ui.js';
@@ -65,7 +67,8 @@ export class SpaceMode {
     this.enemyGroup = new THREE.Group();
     this.scene.add(this.planetGroup, this.asteroidGroup, this.enemyGroup);
 
-    this.ship = buildShip();
+    this.ship = buildShip(stats.shipDef.palette);
+    this.shipClass = state.ship;
     this.scene.add(this.ship);
 
     // pooled bolts
@@ -109,8 +112,27 @@ export class SpaceMode {
     this.clouds = [];
     this._lookMat = new THREE.Matrix4();
     this._prevBolt = new THREE.Vector3();
+    this.freighter = null;
+    this.pods = [];
+    this.blackHole = null;
+    this.blackHoleRequest = false;
+    this.coreRequest = false;
+    this.warnedCore = false;
 
     this.buildTitleScene();
+  }
+
+  syncShipModel() {
+    if (this.shipClass === state.ship) return;
+    const pos = this.ship.position.clone();
+    const quat = this.ship.quaternion.clone();
+    this.scene.remove(this.ship);
+    this.ship.traverse((o) => o.geometry?.dispose?.());
+    this.ship = buildShip(stats.shipDef.palette);
+    this.ship.position.copy(pos);
+    this.ship.quaternion.copy(quat);
+    this.scene.add(this.ship);
+    this.shipClass = state.ship;
   }
 
   // Object3D.lookAt aims +Z at the target; our ship flies down -Z, so do it properly.
@@ -187,6 +209,10 @@ export class SpaceMode {
     this.clouds = [];
     this.enemies = [];
     this.station = null;
+    for (const pod of this.pods) this.scene.remove(pod);
+    this.pods = [];
+    if (this.freighter) { this.scene.remove(this.freighter); this.freighter = null; }
+    this.warnedCore = false;
     this.bolts.forEach((b) => { b.mesh.visible = false; this.boltPool.push(b); });
     this.bolts.length = 0;
 
@@ -198,10 +224,18 @@ export class SpaceMode {
     ]);
     this.scene.backgroundIntensity = 0.55;
 
+    // the title backdrop parks the star far away — put it back at the system centre
+    this.sun.position.set(0, 0, 0);
+    this.sunGlow.position.set(0, 0, 0);
+    this.sunLight.position.set(0, 0, 0);
     this.sun.material.color.set(system.starColor);
     this.sunGlow.material.map = radialSprite(system.starColor, 256, 1.5);
     this.sunGlow.material.needsUpdate = true;
     this.sunLight.color.set(system.starColor);
+    const coreScale = system.isCore ? 2.6 : 1;
+    this.sun.scale.setScalar(coreScale);
+    this.sunGlow.scale.set(16000 * coreScale, 16000 * coreScale, 1);
+    this.sunLight.intensity = system.isCore ? 5 : 3.4;
 
     this.texQueue = [];
     for (const p of system.planets) {
@@ -264,6 +298,47 @@ export class SpaceMode {
     st.position.set(first.orbit * 0.55, 500, first.orbit * 0.25);
     this.scene.add(st);
     this.station = st;
+
+    // freighter convoy + lootable cargo pods
+    this.freighter = null;
+    this.pods = [];
+    if (system.hasFreighter) {
+      const fr = buildFreighter(rng);
+      const fa = rng.float(0, Math.PI * 2);
+      const fdist = system.planets[0].orbit * rng.float(0.7, 1.1);
+      fr.position.set(Math.cos(fa) * fdist, rng.float(-400, 700), Math.sin(fa) * fdist);
+      fr.rotation.y = rng.float(0, Math.PI * 2);
+      this.scene.add(fr);
+      this.freighter = fr;
+
+      const podColors = ['#ffb066', '#8fd6ff', '#c48fff'];
+      for (let i = 0; i < 8; i++) {
+        const pod = buildCargoPod(rng.pick(podColors));
+        const off = new THREE.Vector3(rng.float(-260, 260), rng.float(-120, 160), rng.float(-500, 620));
+        off.applyQuaternion(fr.quaternion);
+        pod.position.copy(fr.position).add(off);
+        pod.rotation.set(rng.float(0, 6), rng.float(0, 6), rng.float(0, 6));
+        pod.userData = {
+          hp: 2,
+          spin: new THREE.Vector3(rng.float(-0.4, 0.4), rng.float(-0.4, 0.4), rng.float(-0.3, 0.3)),
+          loot: rng.pick(['chromatic', 'platinum', 'sodium', 'dihydrogen']),
+          amount: rng.int(25, 70),
+        };
+        this.scene.add(pod);
+        this.pods.push(pod);
+      }
+    }
+
+    // black hole
+    if (this.blackHole) { this.scene.remove(this.blackHole); this.blackHole = null; }
+    if (system.hasBlackHole) {
+      const bh = buildBlackHole();
+      const ba = rng.float(0, Math.PI * 2);
+      const bd = system.planets[system.planets.length - 1].orbit * 1.5;
+      bh.position.set(Math.cos(ba) * bd, rng.float(-1200, 1200), Math.sin(ba) * bd);
+      this.scene.add(bh);
+      this.blackHole = bh;
+    }
 
     // asteroid belt
     const astMat = new THREE.MeshStandardMaterial({ color: '#8b7d6b', roughness: 1, flatShading: true });
@@ -344,6 +419,8 @@ export class SpaceMode {
 
   update(dt) {
     const ship = this.ship;
+    this.blackHoleRequest = false;
+    this.coreRequest = false;
     const m = input.consumeMouse();
 
     const sens = 0.0022;
@@ -365,7 +442,7 @@ export class SpaceMode {
     const pulsing = input.down('Space') && canPulse;
     this.pulse += ((pulsing ? 1 : 0) - this.pulse) * Math.min(1, dt * (pulsing ? 0.9 : 3.5));
 
-    const maxSpeed = 950 * (boosting ? 3.4 : 1) + this.pulse * 52000;
+    const maxSpeed = (950 * stats.shipSpeed) * (boosting ? 3.4 : 1) + this.pulse * 52000;
     this.speed += (this.throttle * maxSpeed - this.speed) * Math.min(1, dt * 1.7);
 
     const forward = FWD.clone().applyQuaternion(ship.quaternion);
@@ -399,8 +476,10 @@ export class SpaceMode {
     this.starfield.position.copy(ship.position);
     this.sunGlow.position.copy(this.sun.position);
 
+    this.syncShipModel();
     this.updateOrbits(dt);
     this.processTextureQueue();
+    this.updateSpaceObjects(dt);
     for (const a of this.asteroidGroup.children) {
       a.rotation.x += a.userData.spin.x * dt;
       a.rotation.y += a.userData.spin.y * dt;
@@ -413,6 +492,46 @@ export class SpaceMode {
 
     audio.hum(Math.min(1, this.speed / 4000) + this.pulse * 0.4);
     this.handleTargeting(dt, near);
+  }
+
+  updateSpaceObjects(dt) {
+    for (const pod of this.pods) {
+      pod.rotation.x += pod.userData.spin.x * dt;
+      pod.rotation.y += pod.userData.spin.y * dt;
+    }
+    if (this.blackHole) {
+      for (const d of this.blackHole.userData.discs) d.rotation.z += dt * 0.25;
+      const d = this.blackHole.position.distanceTo(this.ship.position);
+      if (d < 2600) {
+        // gravity well
+        const pull = (1 - d / 2600) * 900 * dt;
+        const dir = this.blackHole.position.clone().sub(this.ship.position).normalize();
+        this.ship.position.addScaledVector(dir, pull);
+        this.camShake = Math.max(this.camShake, (1 - d / 2600) * 0.6);
+        if (d < 620) this.blackHoleRequest = true;
+      }
+    }
+    // stars are hot: coronal damage, unless you are diving into the core on purpose
+    const sunDist = this.sun.position.distanceTo(this.ship.position);
+    const sunRadius = 1500 * this.sun.scale.x;
+    if (this.system?.isCore) {
+      if (sunDist < 14000 && !this.warnedCore) {
+        this.warnedCore = true;
+        ui.log('THE GALACTIC CORE — fly into the singularity to break through into a new galaxy', 'warn');
+      }
+      if (sunDist < sunRadius * 1.25) this.coreRequest = true;
+    } else if (sunDist < sunRadius * 2.1) {
+      const heat = (1 - sunDist / (sunRadius * 2.1));
+      state.shields = Math.max(0, state.shields - heat * 26 * dt);
+      if (state.shields <= 0) {
+        state.shipHealth = Math.max(0, state.shipHealth - heat * 22 * dt);
+        if (Math.random() < dt * 1.5) ui.log('HULL BURNING — pull away from the star', 'bad');
+        if (state.shipHealth <= 0) this.playerDestroyed();
+      } else if (Math.random() < dt * 0.8) {
+        ui.log('CORONAL HEAT — shields absorbing', 'warn');
+      }
+      this.camShake = Math.max(this.camShake, heat * 0.5);
+    }
   }
 
   // one planet skin per frame keeps warping instant
@@ -527,6 +646,26 @@ export class SpaceMode {
           }
         }
         if (!dead) {
+          for (let pi = this.pods.length - 1; pi >= 0; pi--) {
+            const pod = this.pods[pi];
+            if (segmentDistance(pod.position, prev, b.mesh.position) < 26) {
+              dead = true;
+              pod.userData.hp -= 1 * stats.shipDamage;
+              this.explode(b.mesh.position, 45);
+              if (pod.userData.hp <= 0) {
+                this.scene.remove(pod);
+                this.pods.splice(pi, 1);
+                const got = addResource(pod.userData.loot, pod.userData.amount);
+                ui.flashSlot(pod.userData.loot);
+                ui.log(`CARGO POD CRACKED — +${got} ${pod.userData.loot}`, 'good');
+                for (const m of missions.syncGather()) ui.missionDone(m);
+                audio.pickup();
+              }
+              break;
+            }
+          }
+        }
+        if (!dead) {
           for (const rock of this.asteroidGroup.children) {
             if (segmentDistance(rock.position, prev, b.mesh.position) < rock.geometry.parameters.radius + 8) {
               dead = true;
@@ -540,6 +679,7 @@ export class SpaceMode {
                 ui.flashSlot(rich ? 'chromatic' : 'ferrite');
                 ui.log(`+${amt} ${rich ? 'Chromatic Metal' : 'Ferrite Dust'}`, 'good');
                 audio.pickup();
+                for (const m of missions.syncGather()) ui.missionDone(m);
               }
               break;
             }
@@ -572,6 +712,7 @@ export class SpaceMode {
     const i = this.enemies.indexOf(e);
     if (i >= 0) this.enemies.splice(i, 1);
     state.kills++;
+    for (const m of missions.event('kill_pirate')) ui.missionDone(m);
     const loot = 20 + Math.floor(Math.random() * 40);
     addResource('platinum', loot);
     state.units += 2200;
@@ -682,7 +823,7 @@ export class SpaceMode {
 
         if (input.down('KeyF') && !known) {
           if (this.scanTimer <= 0) audio.scan();
-          this.scanTimer += dt;
+          this.scanTimer += dt * stats.scanSpeed;
           scanPct = Math.min(1, this.scanTimer / 1.4);
           if (this.scanTimer > 1.4) {
             this.scanTimer = 0;
@@ -692,6 +833,7 @@ export class SpaceMode {
               ui.log(`PLANET DISCOVERED — ${p.name} · ${p.biome.label} (+${reward} units)`, 'good');
               ui.log(`Resources: ${p.resources.map((r) => r.toUpperCase()).join(' · ')}`, '');
               audio.discovery();
+              for (const m of missions.event('scan_planet')) ui.missionDone(m);
             }
           }
         } else if (!input.down('KeyF')) this.scanTimer = 0;
@@ -708,6 +850,20 @@ export class SpaceMode {
       }
     }
 
+    if (this.freighter && !tName) {
+      const fd = this.freighter.position.distanceTo(this.ship.position);
+      if (fd < 3000) {
+        tName = 'SYSTEM FREIGHTER';
+        tSub = `${this.system.economy} convoy · ${this.pods.length} cargo pods · shoot pods to salvage`;
+      }
+    }
+    if (this.blackHole && !tName) {
+      const bd = this.blackHole.position.distanceTo(this.ship.position);
+      if (bd < 8000) {
+        tName = 'BLACK HOLE';
+        tSub = `singularity · ${Math.round(bd)} u · fly in to fall toward the core`;
+      }
+    }
     if (hostile && hd < 3000) {
       tName = 'HOSTILE — PIRATE INTERCEPTOR';
       tSub = `${Math.round(hd)} u · left-click to engage`;
@@ -729,6 +885,9 @@ export class SpaceMode {
     for (const h of this.planets) push(h.position, h.userData.planet.biome.sky, 'planet');
     if (this.station) push(this.station.position, '#ff8a3d', 'station');
     for (const e of this.enemies) push(e.mesh.position, '#ff4d4d', 'hostile');
+    if (this.freighter) push(this.freighter.position, '#9dffc4', 'freighter');
+    for (const pod of this.pods) push(pod.position, '#ffd166', 'pod');
+    if (this.blackHole) push(this.blackHole.position, '#c48fff', 'blackhole');
     push(this.sun.position, this.system?.starColor || '#ffd9a0', 'star');
     return out;
   }
@@ -745,7 +904,8 @@ export class SpaceMode {
       planet: loc,
       conditions: `${this.system?.starClass} star · ${this.system?.economy}<br>`
         + `Conflict: ${this.system?.danger} · Hostiles: ${this.enemies.length}<br>`
-        + `Speed: ${Math.round(this.speed).toLocaleString()} u/s`,
+        + `Core distance: ${Math.round(this.system?.distFromCore || 0)} ly · Galaxy ${state.galaxyIndex + 1}<br>`
+        + `${stats.shipDef.label} · ${Math.round(this.speed).toLocaleString()} u/s`,
     };
   }
 }
