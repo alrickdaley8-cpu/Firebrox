@@ -1,26 +1,27 @@
-// Planet surface mode: walk around a procedurally generated world.
+// Planet surface mode: a streaming, living procedural world you walk around in.
 import * as THREE from 'three';
 import { Noise } from './noise.js';
 import { RNG, hash3 } from './rng.js';
 import { input } from './input.js';
-import { state, addResource, discover, spendResources, hasResources } from './state.js';
+import { state, stats, addResource, discover, spendResources, hasResources } from './state.js';
 import { ui } from './ui.js';
-import { buildShip, radialSprite } from './assets3d.js';
-import { makeName } from './universe.js';
+import { buildShip, radialSprite, buildMonolith, buildCrashedShip, buildOutpost, makeStarfield } from './assets3d.js';
+import { makeName, loreLine } from './universe.js';
 import { audio } from './audio.js';
 
-const CHUNK = 128;
-const SEG = 28;
-const VIEW = 3;           // chunk radius
+const CHUNK = 140;
+const SEG_NEAR = 44;
+const SEG_FAR = 14;
+const VIEW = 4;
 const EYE = 1.7;
-const GRAV = 19;
 
 export class SurfaceMode {
   constructor() {
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 6000);
+    this.camera = new THREE.PerspectiveCamera(75, 1, 0.08, 9000);
     this.chunks = new Map();
     this.props = [];
+    this.structures = [];
     this.creatures = [];
     this.raycaster = new THREE.Raycaster();
     this.pos = new THREE.Vector3();
@@ -29,29 +30,59 @@ export class SurfaceMode {
     this.pitch = 0;
     this.grounded = false;
     this.launchRequest = false;
-    this.mineTarget = null;
     this.scanTimer = 0;
+    this.time = 0;
+    this.dayT = 0.28;
+    this.bob = 0;
+    this.stepTimer = 0;
 
-    this.sun = new THREE.DirectionalLight('#ffffff', 2.4);
-    this.sun.position.set(300, 600, 200);
+    this.sun = new THREE.DirectionalLight('#ffffff', 2.6);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    const cam = this.sun.shadow.camera;
+    cam.left = -120; cam.right = 120; cam.top = 120; cam.bottom = -120;
+    cam.near = 1; cam.far = 900;
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.6;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
-    this.hemi = new THREE.HemisphereLight('#ffffff', '#404040', 1.1);
+
+    this.hemi = new THREE.HemisphereLight('#ffffff', '#404040', 1.0);
     this.scene.add(this.hemi);
 
-    this.water = new THREE.Mesh(
-      new THREE.PlaneGeometry(CHUNK * (VIEW * 2 + 3), CHUNK * (VIEW * 2 + 3)),
-      new THREE.MeshStandardMaterial({ color: '#1f6f8f', transparent: true, opacity: 0.72, roughness: 0.15, metalness: 0.3 })
-    );
-    this.water.rotation.x = -Math.PI / 2;
+    this.moonLight = new THREE.DirectionalLight('#8fb4ff', 0.25);
+    this.scene.add(this.moonLight);
+
+    this.stars = makeStarfield(2500, 3000, 21);
+    this.scene.add(this.stars);
+
+    // water with animated waves
+    this.waterUniforms = { uTime: { value: 0 }, uColor: { value: new THREE.Color('#1f6f8f') } };
+    const waterGeo = new THREE.PlaneGeometry(CHUNK * (VIEW * 2 + 3), CHUNK * (VIEW * 2 + 3), 64, 64);
+    waterGeo.rotateX(-Math.PI / 2);
+    this.water = new THREE.Mesh(waterGeo, new THREE.MeshStandardMaterial({
+      color: '#1f6f8f', transparent: true, opacity: 0.78, roughness: 0.12, metalness: 0.45,
+    }));
+    this.water.receiveShadow = false;
+    this.water.material.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = this.waterUniforms.uTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         transformed.y += sin(position.x * 0.08 + uTime * 1.3) * 0.35
+                        + cos(position.z * 0.11 + uTime * 0.9) * 0.3;`
+      );
+    };
     this.scene.add(this.water);
 
     this.ship = buildShip();
-    this.ship.scale.setScalar(1.6);
+    this.ship.scale.setScalar(1.7);
     this.scene.add(this.ship);
+    this.shipLight = new THREE.PointLight('#8fdcff', 1.2, 60, 2);
+    this.scene.add(this.shipLight);
 
     this.beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.035, 1, 5),
+      new THREE.CylinderGeometry(0.035, 0.035, 1, 6),
       new THREE.MeshBasicMaterial({ color: '#ffbb44' })
     );
     this.beam.visible = false;
@@ -64,12 +95,34 @@ export class SurfaceMode {
     this.impact.visible = false;
     this.scene.add(this.impact);
 
+    // weather particles
+    const wCount = 2600;
+    const wPos = new Float32Array(wCount * 3);
+    for (let i = 0; i < wCount; i++) {
+      wPos[i * 3] = (Math.random() - 0.5) * 90;
+      wPos[i * 3 + 1] = Math.random() * 50;
+      wPos[i * 3 + 2] = (Math.random() - 0.5) * 90;
+    }
+    const wGeo = new THREE.BufferGeometry();
+    wGeo.setAttribute('position', new THREE.BufferAttribute(wPos, 3));
+    this.weather = new THREE.Points(wGeo, new THREE.PointsMaterial({
+      color: '#cfefff', size: 0.35, transparent: true, opacity: 0.6, depthWrite: false,
+    }));
+    this.weather.frustumCulled = false;
+    this.weather.visible = false;
+    this.scene.add(this.weather);
+    this.weatherVel = 1;
+
     this.propGeo = {
       rock: new THREE.DodecahedronGeometry(1, 0),
+      boulder: new THREE.IcosahedronGeometry(1, 1),
       crystal: new THREE.OctahedronGeometry(1, 0),
-      trunk: new THREE.CylinderGeometry(0.16, 0.28, 1, 6),
+      trunk: new THREE.CylinderGeometry(0.16, 0.3, 1, 7),
       leaf: new THREE.IcosahedronGeometry(1, 0),
-      pod: new THREE.SphereGeometry(1, 8, 6),
+      pod: new THREE.SphereGeometry(1, 10, 8),
+      cap: new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      cone: new THREE.ConeGeometry(1, 1, 7),
+      torus: new THREE.TorusGeometry(1, 0.24, 8, 16),
     };
   }
 
@@ -80,103 +133,190 @@ export class SurfaceMode {
     this.noise = new Noise(planet.seed);
     const rng = new RNG(planet.seed ^ 0xabcd);
     const b = planet.biome;
-    this.amp = b.amp * rng.float(0.8, 1.35);
-    this.mountain = rng.float(0.6, 1.5);
-    this.waterLevel = planet.biomeKey === 'ocean' ? 8 : rng.float(-26, -2);
+    this.amp = b.amp * rng.float(0.85, 1.4);
+    this.mountain = rng.float(0.7, 1.6);
+    this.waterLevel = planet.biomeKey === 'ocean' ? 10 : rng.float(-28, -2);
+    this.gravity = 19 * planet.gravity;
     this.palette = b.ground.map((c) => new THREE.Color(c));
     this.rockColor = new THREE.Color(b.rock);
-    this.floraColor = new THREE.Color().setHSL(rng.float(0, 1), rng.float(0.4, 0.9), rng.float(0.35, 0.6));
-    this.crystalColor = new THREE.Color().setHSL(rng.float(0, 1), 0.85, 0.6);
+    this.floraColor = new THREE.Color().setHSL(rng.float(0, 1), rng.float(0.45, 0.95), rng.float(0.35, 0.6));
+    this.floraColor2 = new THREE.Color().setHSL(rng.float(0, 1), rng.float(0.45, 0.95), rng.float(0.4, 0.65));
+    this.crystalColor = new THREE.Color().setHSL(rng.float(0, 1), 0.9, 0.62);
+    this.skyDay = new THREE.Color(b.sky);
+    this.skyNight = new THREE.Color(b.night);
+    this.fogDay = new THREE.Color(b.fog);
+    this.dayT = rng.float(0.15, 0.55);
 
-    this.scene.background = new THREE.Color(b.sky);
-    this.scene.fog = new THREE.FogExp2(new THREE.Color(b.fog), 0.0022);
-    this.hemi.color.set(b.sky);
-    this.hemi.groundColor.set(b.ground[1]);
+    this.scene.background = this.skyDay.clone();
+    this.scene.fog = new THREE.FogExp2(this.fogDay.clone(), 0.0019);
     this.sun.color.set(system.starColor);
-    this.water.material.color.set(planet.biomeKey === 'toxic' ? '#7fbf3f' : planet.biomeKey === 'volcanic' ? '#ff5a1f' : '#1f6f8f');
+    this.water.material.color.set(b.water);
 
-    this.terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02, flatShading: true });
+    this.terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.02 });
     this.rockMat = new THREE.MeshStandardMaterial({ color: this.rockColor, roughness: 1, flatShading: true });
     this.crystalMat = new THREE.MeshStandardMaterial({
-      color: this.crystalColor, roughness: 0.15, metalness: 0.3,
-      emissive: this.crystalColor, emissiveIntensity: 0.45, flatShading: true,
+      color: this.crystalColor, roughness: 0.12, metalness: 0.35,
+      emissive: this.crystalColor, emissiveIntensity: 0.6, flatShading: true,
     });
     this.trunkMat = new THREE.MeshStandardMaterial({ color: '#6b4a34', roughness: 1 });
     this.leafMat = new THREE.MeshStandardMaterial({ color: this.floraColor, roughness: 0.85, flatShading: true });
+    this.leafMat2 = new THREE.MeshStandardMaterial({ color: this.floraColor2, roughness: 0.8, flatShading: true });
+
+    // weather setup
+    const wet = ['Heavy Rain', 'Storms'].includes(planet.weather);
+    const dusty = ['Dust Haze', 'Windy'].includes(planet.weather);
+    const frozen = planet.biomeKey === 'frozen' || planet.biomeKey === 'crystalline';
+    this.weather.visible = wet || dusty || frozen;
+    this.weatherVel = wet ? 34 : frozen ? 6 : 3;
+    this.weather.material.color.set(frozen ? '#ffffff' : wet ? '#9fd8ff' : b.fog);
+    this.weather.material.size = frozen ? 0.55 : wet ? 0.32 : 0.4;
+    this.weather.material.opacity = dusty ? 0.35 : 0.65;
 
     // clear world
     for (const key of [...this.chunks.keys()]) this.removeChunk(key);
     for (const c of this.creatures) this.scene.remove(c.mesh);
     this.creatures = [];
 
-    // spawn
-    this.pos.set(rng.float(-200, 200), 0, rng.float(-200, 200));
+    this.pos.set(rng.float(-300, 300), 0, rng.float(-300, 300));
     this.ensureChunks(true);
-    const h = this.height(this.pos.x, this.pos.z);
-    this.pos.y = h + EYE + 0.2;
-    this.ship.position.set(this.pos.x + 7, this.height(this.pos.x + 7, this.pos.z + 4) + 1.4, this.pos.z + 4);
-    this.ship.rotation.y = rng.float(0, Math.PI * 2);
+    this.pos.y = this.height(this.pos.x, this.pos.z) + EYE + 0.2;
+    const sx = this.pos.x + 8, sz = this.pos.z + 5;
+    this.ship.position.set(sx, this.height(sx, sz) + 1.6, sz);
+    this.ship.rotation.set(0, rng.float(0, Math.PI * 2), 0);
     this.vel.set(0, 0, 0);
     this.yaw = rng.float(0, Math.PI * 2);
     this.pitch = -0.05;
     this.spawnCreatures();
+    state.visitedPlanets[planet.seed] = true;
   }
 
   // -------------------------------------------------- terrain
   height(x, z) {
     const n = this.noise;
-    const base = n.fbm2(x * 0.0016, z * 0.0016, 5) * 42;
+    const base = n.fbm2(x * 0.0016, z * 0.0016, 5) * 44;
     const mask = Math.max(0, n.noise2D(x * 0.00035 + 40, z * 0.00035 - 20));
-    const mountains = n.ridged2(x * 0.0035, z * 0.0035, 4) * 60 * mask * this.mountain;
-    const detail = n.fbm2(x * 0.02, z * 0.02, 3) * 1.6;
-    return (base + mountains + detail) * this.amp;
+    const mountains = n.ridged2(x * 0.0035, z * 0.0035, 4) * 66 * mask * this.mountain;
+    const plateau = Math.max(0, n.noise2D(x * 0.0009 - 15, z * 0.0009 + 8)) * 16;
+    const detail = n.fbm2(x * 0.02, z * 0.02, 3) * 1.8;
+    return (base + mountains + plateau + detail) * this.amp;
   }
 
   chunkKey(cx, cz) { return cx + ',' + cz; }
 
-  buildChunk(cx, cz) {
-    const geo = new THREE.PlaneGeometry(CHUNK, CHUNK, SEG, SEG);
+  buildChunk(cx, cz, ring) {
+    const seg = ring <= 1 ? SEG_NEAR : ring <= 2 ? Math.round(SEG_NEAR * 0.6) : SEG_FAR;
+    const geo = new THREE.PlaneGeometry(CHUNK, CHUNK, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
     const ox = cx * CHUNK, oz = cz * CHUNK;
     const c = new THREE.Color();
-    const heights = [];
+    const snow = new THREE.Color('#f2f7ff');
+    const sand = new THREE.Color('#c9bf94');
 
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i) + ox;
-      const z = pos.getZ(i) + oz;
-      const h = this.height(x, z);
-      pos.setY(i, h);
-      heights.push(h);
+      pos.setY(i, this.height(pos.getX(i) + ox, pos.getZ(i) + oz));
     }
-    // colour by height + slope
+    geo.computeVertexNormals();
+    const nrm = geo.attributes.normal;
+
     for (let i = 0; i < pos.count; i++) {
-      const h = heights[i];
-      const t = THREE.MathUtils.clamp((h + 30) / 110, 0, 1);
+      const h = pos.getY(i);
+      const slope = 1 - nrm.getY(i);
+      const t = THREE.MathUtils.clamp((h + 30) / 120, 0, 1);
       c.copy(this.palette[0]).lerp(this.palette[1], t);
-      if (t > 0.55) c.lerp(this.rockColor, (t - 0.55) * 2);
-      if (t > 0.85) c.lerp(new THREE.Color('#f2f7ff'), (t - 0.85) * 3);
-      if (h < this.waterLevel + 3) c.lerp(new THREE.Color('#c9bf94'), 0.45);
-      const j = 0.94 + ((hash3(i, cx, cz) % 100) / 100) * 0.12;
+      if (t > 0.5) c.lerp(this.palette[2], (t - 0.5) * 1.4);
+      if (slope > 0.32) c.lerp(this.rockColor, Math.min(1, (slope - 0.32) * 3));
+      if (t > 0.88) c.lerp(snow, (t - 0.88) * 4);
+      if (h < this.waterLevel + 3.5) c.lerp(sand, 0.5);
+      const j = 0.93 + ((hash3(i, cx, cz) % 100) / 100) * 0.14;
       colors[i * 3] = c.r * j; colors[i * 3 + 1] = c.g * j; colors[i * 3 + 2] = c.b * j;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
 
     const mesh = new THREE.Mesh(geo, this.terrainMat);
     mesh.position.set(ox, 0, oz);
+    mesh.receiveShadow = true;
+    mesh.castShadow = false;
     this.scene.add(mesh);
 
-    const props = this.scatterProps(cx, cz);
-    this.chunks.set(this.chunkKey(cx, cz), { mesh, props });
+    const props = ring <= 3 ? this.scatterProps(cx, cz) : [];
+    const structures = ring <= 2 ? this.scatterStructures(cx, cz) : [];
+    this.chunks.set(this.chunkKey(cx, cz), { mesh, props, structures, ring });
+  }
+
+  makeFlora(rng, style, x, y, z) {
+    const g = new THREE.Group();
+    const scale = 0.6 + this.planet.flora * 0.9;
+    if (style === 'tree') {
+      const h = rng.float(3, 10) * scale;
+      const trunk = new THREE.Mesh(this.propGeo.trunk, this.trunkMat);
+      trunk.scale.set(1, h, 1); trunk.position.y = h / 2; g.add(trunk);
+      for (let k = 0; k < rng.int(1, 3); k++) {
+        const leaf = new THREE.Mesh(rng.chance(0.5) ? this.propGeo.leaf : this.propGeo.pod, rng.chance(0.5) ? this.leafMat : this.leafMat2);
+        const ls = rng.float(1.1, 2.6) * scale;
+        leaf.scale.set(ls, ls * rng.float(0.5, 1.2), ls);
+        leaf.position.set(rng.float(-0.9, 0.9), h + rng.float(-0.6, 0.9), rng.float(-0.9, 0.9));
+        g.add(leaf);
+      }
+    } else if (style === 'mushroom') {
+      const h = rng.float(1.6, 6) * scale;
+      const stem = new THREE.Mesh(this.propGeo.trunk, this.trunkMat);
+      stem.scale.set(1.6, h, 1.6); stem.position.y = h / 2; g.add(stem);
+      const cap = new THREE.Mesh(this.propGeo.cap, rng.chance(0.5) ? this.leafMat : this.leafMat2);
+      const cs = rng.float(1.4, 3.4) * scale;
+      cap.scale.set(cs, cs * rng.float(0.5, 1.0), cs);
+      cap.position.y = h;
+      g.add(cap);
+    } else if (style === 'cactus') {
+      const h = rng.float(1.8, 5) * scale;
+      const body = new THREE.Mesh(this.propGeo.trunk, this.leafMat);
+      body.scale.set(2.2, h, 2.2); body.position.y = h / 2; g.add(body);
+      for (const s of [-1, 1]) {
+        if (!rng.chance(0.6)) continue;
+        const arm = new THREE.Mesh(this.propGeo.trunk, this.leafMat);
+        arm.scale.set(1.4, h * 0.45, 1.4);
+        arm.position.set(s * 0.8, h * 0.6, 0);
+        arm.rotation.z = s * 0.6;
+        g.add(arm);
+      }
+    } else if (style === 'spike') {
+      const h = rng.float(1.4, 4.5) * scale;
+      const spike = new THREE.Mesh(this.propGeo.cone, this.leafMat);
+      spike.scale.set(rng.float(0.4, 1.1), h, rng.float(0.4, 1.1));
+      spike.position.y = h / 2;
+      g.add(spike);
+    } else if (style === 'crystal') {
+      const h = rng.float(1.6, 5) * scale;
+      const shard = new THREE.Mesh(this.propGeo.crystal, this.crystalMat);
+      shard.scale.set(rng.float(0.4, 0.9), h, rng.float(0.4, 0.9));
+      shard.position.y = h * 0.6;
+      g.add(shard);
+    } else { // orb
+      const h = rng.float(1.2, 3.6) * scale;
+      const stalk = new THREE.Mesh(this.propGeo.trunk, this.trunkMat);
+      stalk.scale.set(0.7, h, 0.7); stalk.position.y = h / 2; g.add(stalk);
+      const orb = new THREE.Mesh(this.propGeo.pod, this.leafMat2);
+      const os = rng.float(0.7, 1.7) * scale;
+      orb.scale.setScalar(os);
+      orb.position.y = h + os * 0.4;
+      g.add(orb);
+      const ring = new THREE.Mesh(this.propGeo.torus, this.leafMat);
+      ring.scale.setScalar(os * 1.4);
+      ring.rotation.x = rng.float(0, 3);
+      ring.position.y = h + os * 0.4;
+      g.add(ring);
+    }
+    g.position.set(x, y, z);
+    g.rotation.y = rng.float(0, Math.PI * 2);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    return g;
   }
 
   scatterProps(cx, cz) {
     const rng = new RNG(hash3(cx, cz, this.planet.seed));
     const out = [];
-    const density = 10 + this.planet.flora * 14;
-    const count = Math.floor(density);
+    const count = Math.floor(12 + this.planet.flora * 16);
     for (let i = 0; i < count; i++) {
       const x = cx * CHUNK + rng.float(-CHUNK / 2, CHUNK / 2);
       const z = cz * CHUNK + rng.float(-CHUNK / 2, CHUNK / 2);
@@ -185,42 +325,29 @@ export class SurfaceMode {
 
       const roll = rng.next();
       let obj, res, amount, label;
-      if (roll < 0.4) {
-        // rock
-        const s = rng.float(0.8, 3.2);
-        obj = new THREE.Mesh(this.propGeo.rock, this.rockMat);
+      if (roll < 0.36) {
+        const s = rng.float(0.8, 3.6);
+        obj = new THREE.Mesh(rng.chance(0.5) ? this.propGeo.rock : this.propGeo.boulder, this.rockMat);
         obj.scale.set(s, s * rng.float(0.6, 1.3), s);
         obj.rotation.set(rng.float(0, 6), rng.float(0, 6), rng.float(0, 6));
         obj.position.set(x, y + s * 0.4, z);
-        res = 'ferrite'; amount = rng.int(14, 32); label = 'Ferrite Deposit';
-      } else if (roll < 0.58) {
-        const s = rng.float(0.7, 2.1);
+        obj.castShadow = obj.receiveShadow = true;
+        res = 'ferrite'; amount = rng.int(16, 38); label = 'Ferrite Deposit';
+      } else if (roll < 0.56) {
+        const s = rng.float(0.7, 2.3);
         obj = new THREE.Mesh(this.propGeo.crystal, this.crystalMat);
-        obj.scale.set(s * 0.6, s * rng.float(1.6, 3), s * 0.6);
+        obj.scale.set(s * 0.6, s * rng.float(1.6, 3.2), s * 0.6);
         obj.rotation.y = rng.float(0, 6);
         obj.position.set(x, y + s * 1.1, z);
+        obj.castShadow = true;
         const kinds = ['dihydrogen', 'sodium', ...this.planet.resources];
-        res = rng.pick(kinds); amount = rng.int(10, 26);
-        label = res === 'dihydrogen' ? 'Di-hydrogen Crystal' : res === 'sodium' ? 'Sodium Formation' : 'Mineral Formation';
-      } else if (roll < 0.62 + this.planet.flora * 0.3) {
-        // tree / plant
-        const g = new THREE.Group();
-        const hgt = rng.float(2.5, 8) * (0.5 + this.planet.flora);
-        const trunk = new THREE.Mesh(this.propGeo.trunk, this.trunkMat);
-        trunk.scale.set(1, hgt, 1);
-        trunk.position.y = hgt / 2;
-        g.add(trunk);
-        const canopyCount = rng.int(1, 3);
-        for (let k = 0; k < canopyCount; k++) {
-          const leaf = new THREE.Mesh(rng.chance(0.5) ? this.propGeo.leaf : this.propGeo.pod, this.leafMat);
-          const ls = rng.float(1, 2.4);
-          leaf.scale.set(ls, ls * rng.float(0.5, 1.2), ls);
-          leaf.position.set(rng.float(-0.8, 0.8), hgt + rng.float(-0.6, 0.8), rng.float(-0.8, 0.8));
-          g.add(leaf);
-        }
-        g.position.set(x, y, z);
-        obj = g;
-        res = 'carbon'; amount = rng.int(12, 28); label = 'Flora';
+        res = rng.pick(kinds); amount = rng.int(12, 30);
+        label = res === 'dihydrogen' ? 'Di-hydrogen Crystal'
+          : res === 'sodium' ? 'Sodium Formation'
+            : res === 'chromatic' ? 'Chromatic Vein' : 'Mineral Formation';
+      } else if (roll < 0.6 + this.planet.flora * 0.34) {
+        obj = this.makeFlora(rng, this.planet.biome.floraStyle, x, y, z);
+        res = 'carbon'; amount = rng.int(14, 32); label = 'Flora';
       } else {
         continue;
       }
@@ -229,6 +356,41 @@ export class SurfaceMode {
       out.push(obj);
       this.props.push(obj);
     }
+    return out;
+  }
+
+  scatterStructures(cx, cz) {
+    const rng = new RNG(hash3(cx + 7777, cz - 313, this.planet.seed));
+    const out = [];
+    const chance = 0.1 * this.planet.ruins;
+    if (!rng.chance(chance)) return out;
+    const x = cx * CHUNK + rng.float(-40, 40);
+    const z = cz * CHUNK + rng.float(-40, 40);
+    const y = this.height(x, z);
+    if (y < this.waterLevel + 2) return out;
+
+    const kind = rng.pick(['monolith', 'crash', 'outpost']);
+    let obj;
+    if (kind === 'monolith') obj = buildMonolith(rng, this.crystalColor.getStyle());
+    else if (kind === 'crash') obj = buildCrashedShip(rng);
+    else obj = buildOutpost(rng, this.crystalColor.getStyle());
+    obj.position.set(x, y, z);
+    obj.rotation.y = rng.float(0, Math.PI * 2);
+    obj.userData = {
+      structure: kind,
+      key: `st:${this.planet.seed}:${cx}:${cz}`,
+      name: kind === 'monolith' ? 'Ancient Monolith' : kind === 'crash' ? 'Crashed Freighter' : 'Abandoned Outpost',
+      lore: loreLine(rng),
+      loot: kind === 'crash'
+        ? { chromatic: rng.int(25, 60), platinum: rng.int(20, 50) }
+        : kind === 'outpost'
+          ? { sodium: rng.int(30, 70), dihydrogen: rng.int(30, 70) }
+          : { chromatic: rng.int(15, 40) },
+      used: !!state.discoveries[`st:${this.planet.seed}:${cx}:${cz}`],
+    };
+    this.scene.add(obj);
+    out.push(obj);
+    this.structures.push(obj);
     return out;
   }
 
@@ -242,6 +404,11 @@ export class SurfaceMode {
       const i = this.props.indexOf(p);
       if (i >= 0) this.props.splice(i, 1);
     }
+    for (const s of ch.structures || []) {
+      this.scene.remove(s);
+      const i = this.structures.indexOf(s);
+      if (i >= 0) this.structures.splice(i, 1);
+    }
     this.chunks.delete(key);
   }
 
@@ -254,56 +421,75 @@ export class SurfaceMode {
       for (let dz = -VIEW; dz <= VIEW; dz++) {
         const key = this.chunkKey(pcx + dx, pcz + dz);
         wanted.add(key);
-        if (!this.chunks.has(key)) todo.push([pcx + dx, pcz + dz, dx * dx + dz * dz]);
+        const ring = Math.max(Math.abs(dx), Math.abs(dz));
+        if (!this.chunks.has(key)) todo.push([pcx + dx, pcz + dz, dx * dx + dz * dz, ring]);
       }
     }
     todo.sort((a, b) => a[2] - b[2]);
     const budget = immediate ? todo.length : 2;
-    for (let i = 0; i < Math.min(budget, todo.length); i++) this.buildChunk(todo[i][0], todo[i][1]);
+    for (let i = 0; i < Math.min(budget, todo.length); i++) {
+      this.buildChunk(todo[i][0], todo[i][1], todo[i][3]);
+    }
     for (const key of [...this.chunks.keys()]) if (!wanted.has(key)) this.removeChunk(key);
     this.water.position.set(pcx * CHUNK, this.waterLevel, pcz * CHUNK);
   }
 
   // -------------------------------------------------- creatures
   spawnCreatures() {
-    const n = Math.round(this.planet.fauna * 9);
+    const n = Math.round(this.planet.fauna * 11);
     const rng = new RNG(this.planet.seed ^ 0x77);
     for (let i = 0; i < n; i++) {
+      const flying = rng.chance(0.25);
       const g = new THREE.Group();
-      const col = new THREE.Color().setHSL(rng.float(0, 1), rng.float(0.4, 0.9), rng.float(0.4, 0.65));
+      const col = new THREE.Color().setHSL(rng.float(0, 1), rng.float(0.4, 0.95), rng.float(0.35, 0.65));
       const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.8, flatShading: true });
-      const bodyS = rng.float(0.6, 2.2);
-      const body = new THREE.Mesh(new THREE.IcosahedronGeometry(bodyS, 1), mat);
+      const s = rng.float(0.5, 2.6);
+
+      const body = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), mat);
+      body.scale.set(1, rng.float(0.7, 1.2), rng.float(1, 1.6));
       g.add(body);
-      const head = new THREE.Mesh(new THREE.IcosahedronGeometry(bodyS * 0.55, 1), mat);
-      head.position.set(0, bodyS * 0.7, bodyS * 0.8);
+      const head = new THREE.Mesh(new THREE.IcosahedronGeometry(s * 0.55, 1), mat);
+      head.position.set(0, s * 0.7, s * 0.9);
       g.add(head);
-      for (const s of [-1, 1]) {
-        for (const f of [-1, 1]) {
-          const leg = new THREE.Mesh(new THREE.CylinderGeometry(bodyS * 0.1, bodyS * 0.08, bodyS * 1.2, 5), mat);
-          leg.position.set(s * bodyS * 0.5, -bodyS * 0.7, f * bodyS * 0.5);
-          g.add(leg);
+
+      if (flying) {
+        for (const side of [-1, 1]) {
+          const wing = new THREE.Mesh(new THREE.ConeGeometry(s * 0.9, s * 2.4, 4), mat);
+          wing.rotation.z = side * Math.PI / 2;
+          wing.position.set(side * s * 1.2, s * 0.2, 0);
+          g.add(wing);
+          wing.userData.wing = side;
+        }
+      } else {
+        for (const side of [-1, 1]) {
+          for (const f of [-1, 1]) {
+            const leg = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.1, s * 0.07, s * 1.3, 5), mat);
+            leg.position.set(side * s * 0.55, -s * 0.75, f * s * 0.55);
+            g.add(leg);
+          }
         }
       }
-      const eyeMat = new THREE.MeshStandardMaterial({ color: '#111', emissive: '#ffcf5c', emissiveIntensity: 0.7 });
-      for (const s of [-1, 1]) {
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(bodyS * 0.12, 6, 5), eyeMat);
-        eye.position.set(s * bodyS * 0.22, bodyS * 0.85, bodyS * 1.2);
+      const eyeMat = new THREE.MeshStandardMaterial({ color: '#0a0a0a', emissive: '#ffd166', emissiveIntensity: 1.1 });
+      for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(s * 0.13, 8, 6), eyeMat);
+        eye.position.set(side * s * 0.24, s * 0.88, s * 1.25);
         g.add(eye);
       }
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+
       const a = rng.float(0, Math.PI * 2);
-      const d = rng.float(30, 220);
+      const d = rng.float(30, 240);
       g.position.set(this.pos.x + Math.cos(a) * d, 0, this.pos.z + Math.sin(a) * d);
       this.scene.add(g);
       this.creatures.push({
-        mesh: g,
-        size: bodyS,
-        name: makeName(rng, false) + ' ' + rng.pick(['Prime', 'Minor', 'Rex', 'Vulpis', 'Gryph', 'Nox']),
+        mesh: g, size: s, flying,
+        name: makeName(rng, false) + ' ' + rng.pick(['Prime', 'Minor', 'Rex', 'Vulpis', 'Gryph', 'Nox', 'Ferox', 'Pica']),
         temperament: rng.pick(['Docile', 'Skittish', 'Curious', 'Territorial']),
-        speed: rng.float(2, 7),
+        diet: rng.pick(['Herbivore', 'Carnivore', 'Oxide Eater', 'Photosynthetic']),
+        weight: Math.round(s * rng.float(40, 160)),
+        speed: rng.float(2, 8),
         dir: rng.float(0, Math.PI * 2),
-        timer: 0,
-        hop: rng.float(0, 6),
+        timer: 0, hop: rng.float(0, 6),
         key: 'cr:' + this.planet.seed + ':' + i,
       });
     }
@@ -317,23 +503,84 @@ export class SurfaceMode {
         c.dir += (Math.random() - 0.5) * 2.4;
       }
       const away = c.mesh.position.distanceTo(this.pos);
-      if (away > 420) {
+      if (away > 460) {
         const a = Math.random() * Math.PI * 2;
-        c.mesh.position.set(this.pos.x + Math.cos(a) * 200, 0, this.pos.z + Math.sin(a) * 200);
+        c.mesh.position.set(this.pos.x + Math.cos(a) * 220, 0, this.pos.z + Math.sin(a) * 220);
       }
-      const sp = c.speed * (c.temperament === 'Skittish' && away < 25 ? 2.2 : 1);
       let dir = c.dir;
-      if (c.temperament === 'Skittish' && away < 25) {
+      let sp = c.speed;
+      if (c.temperament === 'Skittish' && away < 28) {
         dir = Math.atan2(c.mesh.position.z - this.pos.z, c.mesh.position.x - this.pos.x);
+        sp *= 2.3;
       } else if (c.temperament === 'Curious' && away < 60) {
         dir = Math.atan2(this.pos.z - c.mesh.position.z, this.pos.x - c.mesh.position.x);
+      } else if (c.temperament === 'Territorial' && away < 22) {
+        dir = Math.atan2(this.pos.z - c.mesh.position.z, this.pos.x - c.mesh.position.x);
+        sp *= 1.6;
       }
       c.mesh.position.x += Math.cos(dir) * sp * dt;
       c.mesh.position.z += Math.sin(dir) * sp * dt;
       c.hop += dt * (3 + sp);
       const ground = this.height(c.mesh.position.x, c.mesh.position.z);
-      c.mesh.position.y = ground + c.size * 1.3 + Math.abs(Math.sin(c.hop)) * c.size * 0.35;
+      if (c.flying) {
+        c.mesh.position.y = ground + 9 + Math.sin(c.hop * 0.6) * 3.5;
+        c.mesh.children.forEach((ch) => {
+          if (ch.userData.wing) ch.rotation.x = Math.sin(c.hop * 3) * 0.6;
+        });
+      } else {
+        c.mesh.position.y = ground + c.size * 1.35 + Math.abs(Math.sin(c.hop)) * c.size * 0.4;
+      }
       c.mesh.rotation.y = -dir + Math.PI / 2;
+    }
+  }
+
+  // -------------------------------------------------- day / night / weather
+  updateSky(dt) {
+    this.time += dt;
+    this.dayT = (this.dayT + dt / this.planet.dayLength) % 1;
+    const ang = this.dayT * Math.PI * 2;
+    const sunHeight = Math.sin(ang);
+    const dayFactor = THREE.MathUtils.clamp(sunHeight * 1.6 + 0.35, 0, 1);
+
+    const sunDir = new THREE.Vector3(Math.cos(ang) * 0.6, sunHeight, Math.sin(ang) * 0.45).normalize();
+    this.sun.position.copy(this.pos).addScaledVector(sunDir, 300);
+    this.sun.target.position.copy(this.pos);
+    this.sun.target.updateMatrixWorld();
+    this.sun.intensity = 2.9 * dayFactor;
+
+    const sunset = THREE.MathUtils.clamp(1 - Math.abs(sunHeight) * 3.2, 0, 1);
+    const sky = this.skyNight.clone().lerp(this.skyDay, dayFactor);
+    sky.lerp(new THREE.Color('#ff7a3d'), sunset * 0.45);
+    this.scene.background.copy(sky);
+    this.scene.fog.color.copy(this.fogDay).lerp(this.skyNight, 1 - dayFactor).lerp(new THREE.Color('#ff8a4d'), sunset * 0.3);
+
+    this.hemi.intensity = 0.25 + dayFactor * 0.95;
+    this.hemi.color.copy(sky);
+    this.hemi.groundColor.copy(this.palette[1]);
+    this.moonLight.intensity = 0.3 * (1 - dayFactor);
+    this.moonLight.position.copy(this.pos).add(new THREE.Vector3(-200, 260, -150));
+
+    this.stars.position.copy(this.pos);
+    this.stars.material.uniforms.uOpacity.value = 1 - dayFactor;
+    this.stars.visible = dayFactor < 0.95;
+    this.shipLight.position.copy(this.ship.position).add(new THREE.Vector3(0, 4, 0));
+    this.shipLight.intensity = 0.5 + (1 - dayFactor) * 2.2;
+
+    this.waterUniforms.uTime.value = this.time;
+
+    // weather drift
+    if (this.weather.visible) {
+      this.weather.position.set(this.pos.x, 0, this.pos.z);
+      const p = this.weather.geometry.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        let y = p.getY(i) - this.weatherVel * dt;
+        let x = p.getX(i) + dt * this.weatherVel * 0.12;
+        if (y < -6) { y = 46 + Math.random() * 8; }
+        if (x > 45) x -= 90;
+        p.setY(i, y); p.setX(i, x);
+      }
+      p.needsUpdate = true;
+      this.weather.position.y = this.height(this.pos.x, this.pos.z);
     }
   }
 
@@ -351,85 +598,113 @@ export class SurfaceMode {
     if (input.down('KeyD')) wish.add(right);
     if (input.down('KeyA')) wish.sub(right);
     const sprint = input.down('ShiftLeft') || input.down('ShiftRight');
-    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(sprint ? 17 : 8.5);
+    const speed = sprint ? 18 : 9;
+    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
 
-    const accel = this.grounded ? 12 : 4;
+    const accel = this.grounded ? 13 : 4;
     this.vel.x += (wish.x - this.vel.x) * Math.min(1, dt * accel);
     this.vel.z += (wish.z - this.vel.z) * Math.min(1, dt * accel);
 
-    // jump + jetpack
     if (input.down('Space')) {
       if (this.grounded) {
-        this.vel.y = 8.5;
+        this.vel.y = 9 * Math.sqrt(this.planet.gravity);
         this.grounded = false;
+        audio.blip(320, 0.07, 'sine', 0.15);
       } else if (state.jetpack > 0) {
-        this.vel.y += 26 * dt;
-        state.jetpack = Math.max(0, state.jetpack - dt * 22);
+        this.vel.y += 28 * dt;
+        state.jetpack = Math.max(0, state.jetpack - dt * stats.jetpackDrain);
       }
     }
-    this.vel.y -= GRAV * dt;
+    this.vel.y -= this.gravity * dt;
 
     this.pos.addScaledVector(this.vel, dt);
 
     const ground = this.height(this.pos.x, this.pos.z);
-    const floor = Math.max(ground, this.waterLevel - 1.2) + EYE;
+    const swimming = this.pos.y < this.waterLevel + EYE;
+    const floor = Math.max(ground, swimming ? this.waterLevel - 1.4 : -Infinity) + EYE;
     if (this.pos.y <= floor) {
+      if (this.vel.y < -22) audio.blip(120, 0.12, 'sine', 0.2);
       this.pos.y = floor;
       this.vel.y = 0;
       this.grounded = true;
-      state.jetpack = Math.min(100, state.jetpack + dt * 32);
+      state.jetpack = Math.min(100, state.jetpack + dt * stats.jetpackRecharge);
     } else {
       this.grounded = false;
-      if (!input.down('Space')) state.jetpack = Math.min(100, state.jetpack + dt * 10);
+      if (!input.down('Space')) state.jetpack = Math.min(100, state.jetpack + dt * 12);
     }
 
+    // head bob + footsteps
+    const horizSpeed = Math.hypot(this.vel.x, this.vel.z);
+    if (this.grounded && horizSpeed > 1) {
+      this.bob += dt * horizSpeed * 0.9;
+      this.stepTimer -= dt * horizSpeed;
+      if (this.stepTimer <= 0) {
+        this.stepTimer = 8;
+        audio.blip(90 + Math.random() * 40, 0.05, 'triangle', 0.08);
+      }
+    } else this.bob += dt;
+
     this.camera.position.copy(this.pos);
+    this.camera.position.y += Math.sin(this.bob * 2) * (this.grounded ? 0.06 : 0) * Math.min(1, horizSpeed / 8);
     this.camera.rotation.set(0, 0, 0);
     this.camera.rotateY(this.yaw);
     this.camera.rotateX(this.pitch);
+    this.camera.rotateZ(Math.sin(this.bob) * 0.006 * Math.min(1, horizSpeed / 8));
 
-    this.sun.position.copy(this.pos).add(new THREE.Vector3(320, 620, 180));
-    this.sun.target.position.copy(this.pos);
-    this.sun.target.updateMatrixWorld();
-
-    audio.hum(Math.min(0.35, this.vel.length() / 60));
+    this.updateSky(dt);
     this.ensureChunks();
     this.updateCreatures(dt);
-    this.updateHazards(dt);
+    this.updateHazards(dt, swimming);
     this.updateTool(dt);
+    audio.hum(Math.min(0.3, horizSpeed / 70));
+    ui.compass(this.yaw, this.waypoints());
   }
 
-  updateHazards(dt) {
+  waypoints() {
+    const list = [{ pos: this.ship.position, color: '#63e6ff', label: 'SHIP' }];
+    for (const s of this.structures) {
+      if (s.position.distanceTo(this.pos) < 400) {
+        list.push({ pos: s.position, color: s.userData.used ? '#8a8a8a' : '#ff9f43', label: s.userData.name.toUpperCase() });
+      }
+    }
+    return list.map((w) => {
+      const dx = w.pos.x - this.pos.x, dz = w.pos.z - this.pos.z;
+      return { bearing: Math.atan2(dx, -dz), dist: Math.hypot(dx, dz), color: w.color, label: w.label };
+    });
+  }
+
+  updateHazards(dt, swimming) {
     const b = this.planet.biome;
     if (b.hazard !== 'None') {
-      state.hazardProtection = Math.max(0, state.hazardProtection - dt * 1.6);
+      state.hazardProtection = Math.max(0, state.hazardProtection - dt * stats.hazardDrain);
       if (state.hazardProtection <= 0) {
         state.life = Math.max(0, state.life - dt * 4);
         if (state.life <= 0) {
-          state.life = 30; state.hazardProtection = 50;
-          this.pos.copy(this.ship.position).add(new THREE.Vector3(0, 3, 0));
+          state.life = 35; state.hazardProtection = 50;
+          this.pos.copy(this.ship.position).add(new THREE.Vector3(0, 4, 0));
+          this.vel.set(0, 0, 0);
           ui.log('LIFE SUPPORT FAILURE — emergency recovery at ship', 'bad');
-        } else if (Math.random() < dt * 2) {
+          audio.error();
+        } else if (Math.random() < dt * 1.4) {
           ui.log('WARNING: hazard protection depleted', 'bad');
         }
       }
     } else {
       state.hazardProtection = Math.min(100, state.hazardProtection + dt * 3);
     }
-    // underwater / life support drain
-    if (this.pos.y < this.waterLevel) {
-      state.life = Math.max(0, state.life - dt * 6);
+
+    if (swimming && this.pos.y < this.waterLevel - 0.4) {
+      state.life = Math.max(0, state.life - dt * 5);
     } else {
       state.life = Math.min(100, state.life + dt * 1.2);
     }
 
-    if (input.down('KeyR')) {
-      if (state.hazardProtection < 95 && hasResources({ sodium: 10 })) {
-        spendResources({ sodium: 10 });
-        state.hazardProtection = Math.min(100, state.hazardProtection + 50);
-        ui.log('Hazard protection recharged with Sodium', 'good');
-        input.keys.delete('KeyR');
-      }
+    if (input.down('KeyR') && state.hazardProtection < 95 && hasResources({ sodium: 10 })) {
+      spendResources({ sodium: 10 });
+      state.hazardProtection = Math.min(100, state.hazardProtection + 50);
+      ui.log('Hazard protection recharged with Sodium', 'good');
+      audio.pickup();
+      input.keys.delete('KeyR');
     }
   }
 
@@ -441,16 +716,16 @@ export class SurfaceMode {
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
     const origin = this.camera.position.clone();
     this.raycaster.set(origin, dir);
-    this.raycaster.far = 26;
+    this.raycaster.far = 30;
 
     let tName = null, tSub = '', scanPct = null, prompt = '';
 
-    // ship prompt
+    // ship
     const shipDist = this.ship.position.distanceTo(this.pos);
-    if (shipDist < 14) {
+    if (shipDist < 15) {
       prompt = state.launchFuel >= 20
         ? 'Press <b>E</b> to launch'
-        : 'Launch thrusters need fuel — <b>refuel with 20 Di-hydrogen (press G)</b>';
+        : 'Thrusters dry — <b>G</b> to refuel (20 Di-hydrogen)';
       if (input.down('KeyE') && state.launchFuel >= 20) {
         this.launchRequest = true;
         input.keys.delete('KeyE');
@@ -459,16 +734,44 @@ export class SurfaceMode {
         spendResources({ dihydrogen: 20 });
         state.launchFuel = Math.min(100, state.launchFuel + 50);
         ui.log('Launch thrusters refuelled', 'good');
+        audio.pickup();
         input.keys.delete('KeyG');
       }
     }
 
-    // creature scanning
-    let nearestCreature = null, ncd = 60;
+    // structures
+    let structure = null;
+    for (const s of this.structures) {
+      if (s.position.distanceTo(this.pos) < 12) { structure = s; break; }
+    }
+    if (structure && !prompt) {
+      const u = structure.userData;
+      tName = u.name.toUpperCase();
+      tSub = u.used ? 'already surveyed' : 'hold <b>F</b> to interface';
+      if (!u.used) {
+        if (input.down('KeyF')) {
+          if (this.scanTimer <= 0) audio.scan();
+          this.scanTimer += dt;
+          scanPct = Math.min(1, this.scanTimer / 1.6);
+          if (this.scanTimer > 1.6) {
+            this.scanTimer = 0;
+            u.used = true;
+            discover(u.key, u.name, 'ruin');
+            for (const [k, v] of Object.entries(u.loot)) { addResource(k, v); ui.flashSlot(k); }
+            ui.log(`${u.name.toUpperCase()} — ${u.lore}`, 'good');
+            ui.log(`Salvage: ${Object.entries(u.loot).map(([k, v]) => `+${v} ${k}`).join(' · ')} · +60 nanites`, 'good');
+            audio.discovery();
+          }
+        } else this.scanTimer = 0;
+      }
+    }
+
+    // creature scan
+    let creature = null, ncd = 70;
     for (const c of this.creatures) {
       const d = c.mesh.position.distanceTo(this.pos);
       const toC = c.mesh.position.clone().sub(origin).normalize();
-      if (d < ncd && toC.dot(dir) > 0.93) { nearestCreature = c; ncd = d; }
+      if (d < ncd && toC.dot(dir) > 0.94) { creature = c; ncd = d; }
     }
 
     const hits = this.raycaster.intersectObjects(this.props, true);
@@ -479,22 +782,21 @@ export class SurfaceMode {
       if (o?.userData?.res) hitProp = { obj: o, point: hits[0].point };
     }
 
-    if (hitProp) {
+    if (hitProp && !structure) {
       const u = hitProp.obj.userData;
       tName = u.label.toUpperCase();
-      tSub = `${u.res.toUpperCase()} · ${Math.round(u.hp * 100)}%`;
+      tSub = `${u.res.toUpperCase()} · ${Math.max(0, Math.round(u.hp * 100))}%`;
       if (input.mouseDown) {
-        this.beam.visible = true;
         const end = hitProp.point;
-        const mid = origin.clone().lerp(end, 0.5);
-        this.beam.position.copy(mid);
+        this.beam.visible = true;
+        this.beam.position.copy(origin.clone().lerp(end, 0.5));
         this.beam.scale.set(1, origin.distanceTo(end), 1);
         this.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
         this.impact.visible = true;
         this.impact.position.copy(end);
         this.impact.scale.setScalar(0.9 + Math.random() * 0.7);
 
-        u.hp -= dt * 1.5;
+        u.hp -= dt * 1.5 * stats.miningRate;
         if (u.hp <= 0) {
           addResource(u.res, u.amount);
           ui.flashSlot(u.res);
@@ -509,22 +811,24 @@ export class SurfaceMode {
           }
         }
       }
-    } else if (nearestCreature) {
-      const known = state.discoveries[nearestCreature.key];
-      tName = known ? nearestCreature.name.toUpperCase() : 'UNKNOWN LIFEFORM';
-      tSub = known ? `${nearestCreature.temperament} · catalogued` : `${Math.round(ncd)} m · hold F to scan`;
+    } else if (creature && !structure) {
+      const known = state.discoveries[creature.key];
+      tName = known ? creature.name.toUpperCase() : 'UNKNOWN LIFEFORM';
+      tSub = known
+        ? `${creature.diet} · ${creature.temperament} · ${creature.weight} kg`
+        : `${Math.round(ncd)} m · hold F to scan`;
       if (input.down('KeyF') && !known) {
+        if (this.scanTimer <= 0) audio.scan();
         this.scanTimer += dt;
         scanPct = Math.min(1, this.scanTimer / 1.1);
-        if (this.scanTimer < dt * 1.5) audio.scan();
         if (this.scanTimer > 1.1) {
           this.scanTimer = 0;
-          discover(nearestCreature.key, nearestCreature.name, 'creature');
-          ui.log(`LIFEFORM CATALOGUED — ${nearestCreature.name} (${nearestCreature.temperament}) +400 units`, 'good');
+          discover(creature.key, creature.name, 'creature');
+          ui.log(`LIFEFORM CATALOGUED — ${creature.name} · ${creature.diet} · ${creature.temperament} (+400 units)`, 'good');
           audio.discovery();
         }
-      } else this.scanTimer = 0;
-    } else {
+      } else if (!input.down('KeyF')) this.scanTimer = 0;
+    } else if (!structure) {
       this.scanTimer = 0;
     }
 
@@ -535,11 +839,17 @@ export class SurfaceMode {
   info() {
     const p = this.planet;
     const alt = Math.round(this.pos.y - this.waterLevel);
+    const hh = Math.floor(this.dayT * 24);
+    const mm = Math.floor((this.dayT * 24 % 1) * 60);
+    const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     return {
       system: this.system.name,
       planetLabel: 'Planet',
       planet: `${p.name} · ${p.biome.label}`,
-      conditions: `Hazard: ${p.biome.hazard} · Weather: ${p.weather}<br>Sentinels: ${p.sentinels} · Altitude: ${alt} m<br>Coords: ${Math.round(this.pos.x)}, ${Math.round(this.pos.z)}`,
+      conditions: `Hazard: ${p.biome.hazard} · ${p.weather}<br>`
+        + `Sentinels: ${p.sentinels} · Gravity: ${p.gravity.toFixed(2)}g<br>`
+        + `Local time ${clock} · Altitude ${alt} m<br>`
+        + `Coords ${Math.round(this.pos.x)}, ${Math.round(this.pos.z)}`,
     };
   }
 }

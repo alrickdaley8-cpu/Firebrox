@@ -1,7 +1,14 @@
-// FIREBROX — entry point: renderer, game modes, and the loop.
+// FIREBROX — entry point: renderer, post-processing, game modes, loop.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { generateGalaxy, buildSystem, RESOURCES } from './universe.js';
-import { state, saveGame, loadGame, clearSave, hasResources, spendResources } from './state.js';
+import {
+  state, stats, saveGame, loadGame, clearSave, hasSave,
+  hasResources, spendResources,
+} from './state.js';
 import { input } from './input.js';
 import { ui } from './ui.js';
 import { SpaceMode } from './space.js';
@@ -10,28 +17,47 @@ import { GalaxyMap } from './map.js';
 import { audio } from './audio.js';
 
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const game = {
-  mode: 'title',        // title | space | surface
+  mode: 'title',
   running: false,
   paused: false,
-  galaxy: generateGalaxy('firebrox-prime', 240),
+  galaxy: generateGalaxy('firebrox-prime', 320),
   system: null,
   space: new SpaceMode(),
   surface: new SurfaceMode(),
   map: null,
+  docked: false,
 };
 
 game.map = new GalaxyMap(game.galaxy, (sys) => warpTo(sys.id));
 input.init(canvas);
 ui.init();
 
-// ------------------------------------------------------------------ helpers
+// ------------------------------------------------------------------ post fx
+function makeComposer(scene, camera, strength, radius, threshold) {
+  const c = new EffectComposer(renderer);
+  c.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), strength, radius, threshold);
+  c.addPass(bloom);
+  c.addPass(new OutputPass());
+  c.bloom = bloom;
+  return c;
+}
+const composers = {
+  space: makeComposer(game.space.scene, game.space.camera, 0.85, 0.55, 0.62),
+  surface: makeComposer(game.surface.scene, game.surface.camera, 0.34, 0.5, 0.95),
+};
+
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
@@ -39,10 +65,15 @@ function resize() {
     c.aspect = w / h;
     c.updateProjectionMatrix();
   }
+  for (const key of Object.keys(composers)) {
+    composers[key].setSize(w, h);
+    composers[key].bloom.setSize(w, h);
+  }
   if (game.map.open) { game.map.resize(); game.map.draw(); }
 }
 addEventListener('resize', resize);
 
+// ------------------------------------------------------------------ flow
 function enterSystem(systemId, opts = {}) {
   state.systemId = systemId;
   game.system = buildSystem(game.galaxy.systems[systemId]);
@@ -57,10 +88,10 @@ function warpTo(systemId) {
   setTimeout(() => {
     enterSystem(systemId);
     ui.loading(null);
-    ui.warpFlash(900);
+    ui.warpFlash(1100);
     ui.log(`WARP COMPLETE — ${game.system.name}`, 'good');
     input.lock();
-  }, 420);
+  }, 480);
 }
 
 function landOn(planet) {
@@ -74,13 +105,14 @@ function landOn(planet) {
     ui.loading(null);
     ui.log(`LANDED — ${planet.name} · ${planet.biome.label} world`, 'good');
     if (planet.biome.hazard !== 'None') ui.log(`ENVIRONMENT HAZARD: ${planet.biome.hazard}`, 'warn');
+    ui.log(`Gravity ${planet.gravity.toFixed(2)}g · ${planet.weather} · sentinels ${planet.sentinels}`, '');
     input.lock();
-  }, 500);
+  }, 520);
 }
 
 function launchToSpace() {
-  audio.sweep(120, 900, 1.1, 'sawtooth', 0.28);
   const planetIndex = game.surface.planet.index;
+  audio.sweep(120, 900, 1.1, 'sawtooth', 0.28);
   ui.loading('Leaving orbit…');
   setTimeout(() => {
     game.space.setSystem(game.system, { fromPlanet: planetIndex });
@@ -89,7 +121,31 @@ function launchToSpace() {
     ui.loading(null);
     ui.log('LAUNCHED — welcome back to the void', 'good');
     input.lock();
-  }, 420);
+  }, 460);
+}
+
+function dockAtStation() {
+  game.docked = true;
+  input.unlock();
+  state.shipHealth = 100;
+  state.shields = stats.shieldMax;
+  state.launchFuel = 100;
+  state.life = 100;
+  ui.log('DOCKED — hull repaired, thrusters refuelled', 'good');
+  audio.discovery();
+  ui.openTrade(game.system, () => {
+    game.docked = false;
+    // shove the ship clear of the station so we do not instantly re-dock
+    const st = game.space.station;
+    if (st) {
+      const away = game.space.ship.position.clone().sub(st.position).normalize();
+      if (away.lengthSq() < 0.1) away.set(0, 1, 0);
+      game.space.ship.position.copy(st.position).addScaledVector(away, 900);
+      game.space.ship.lookAt(st.position.clone().addScaledVector(away, 4000));
+      game.space.camPos.copy(game.space.ship.position);
+    }
+    input.lock();
+  });
 }
 
 function craftWarpCell() {
@@ -102,8 +158,8 @@ function craftWarpCell() {
   spendResources(cost);
   state.inventory.warpcell += 1;
   ui.flashSlot('warpcell');
-  audio.discovery();
   ui.log('WARP CELL CRAFTED', 'good');
+  audio.discovery();
 }
 
 function setPaused(v) {
@@ -115,9 +171,9 @@ function setPaused(v) {
 
 function startGame(continueSave) {
   if (continueSave) loadGame();
-  audio.resume();
   document.getElementById('title').classList.add('hidden');
   ui.showHUD(true);
+  audio.resume();
   ui.loading('Generating star system…');
   setTimeout(() => {
     enterSystem(state.systemId || 0);
@@ -126,10 +182,10 @@ function startGame(continueSave) {
     ui.log(`ARRIVED — ${game.system.name}`, 'good');
     ui.log('Hold E near a planet to land · F to scan · M for the galaxy map', '');
     input.lock();
-  }, 60);
+  }, 80);
 }
 
-// ------------------------------------------------------------------ UI wiring
+// ------------------------------------------------------------------ wiring
 document.getElementById('btn-new').onclick = () => { clearSave(); startGame(false); };
 document.getElementById('btn-continue').onclick = () => startGame(true);
 document.getElementById('btn-resume').onclick = () => setPaused(false);
@@ -138,63 +194,84 @@ document.getElementById('btn-save').onclick = () => {
   ui.log(ok ? 'JOURNEY SAVED' : 'SAVE FAILED', ok ? 'good' : 'bad');
 };
 document.getElementById('btn-quit').onclick = () => location.reload();
-
-try {
-  document.getElementById('btn-continue').disabled = !localStorage.getItem('firebrox.save.v1');
-} catch (e) { /* ignore */ }
+document.getElementById('btn-continue').disabled = !hasSave();
 
 canvas.addEventListener('click', () => {
   audio.resume();
-  if (game.running && !game.paused && !game.map.open) input.lock();
+  if (game.running && !game.paused && !game.map.open && !game.docked) input.lock();
 });
 
 addEventListener('keydown', (e) => {
   if (!game.running) return;
-  if (e.code === 'KeyM') {
-    if (game.mode !== 'space') { ui.log('Galaxy map is only available in flight', 'warn'); return; }
-    if (game.map.open) { game.map.hide(); input.lock(); }
-    else { input.unlock(); game.map.show(state.systemId); }
+  if (game.docked) {
+    if (e.code === 'Escape' || e.code === 'KeyE') ui.closeTrade();
+    return;
   }
-  if (e.code === 'Enter' && game.map.open) {
-    if (!game.map.tryWarp()) ui.log('Warp failed — check range and warp cells', 'bad');
+  switch (e.code) {
+    case 'KeyM':
+      if (game.mode !== 'space') { ui.log('Galaxy map is only available in flight', 'warn'); break; }
+      if (game.map.open) { game.map.hide(); input.lock(); }
+      else { input.unlock(); game.map.show(state.systemId); }
+      break;
+    case 'Enter':
+      if (game.map.open && !game.map.tryWarp()) {
+        ui.log('Warp failed — check range and warp cells', 'bad');
+        audio.error();
+      }
+      break;
+    case 'KeyC': craftWarpCell(); break;
+    case 'Tab': e.preventDefault(); setPaused(!game.paused); break;
+    case 'Escape': if (game.map.open) game.map.hide(); break;
+    case 'KeyP': renderer.toneMappingExposure = renderer.toneMappingExposure > 1 ? 0.85 : 1.05; break;
+    default: break;
   }
-  if (e.code === 'KeyC') craftWarpCell();
-  if (e.code === 'Tab') { e.preventDefault(); setPaused(!game.paused); }
-  if (e.code === 'Escape' && game.map.open) { game.map.hide(); }
-  if (e.code === 'F5' || (e.ctrlKey && e.code === 'KeyS')) { e.preventDefault(); saveGame(); ui.log('JOURNEY SAVED', 'good'); }
+  if (e.ctrlKey && e.code === 'KeyS') { e.preventDefault(); saveGame(); ui.log('JOURNEY SAVED', 'good'); }
 });
 
-// autosave
-setInterval(() => { if (game.running) saveGame(); }, 30000);
+setInterval(() => { if (game.running && !game.paused) saveGame(); }, 30000);
 
 // ------------------------------------------------------------------ loop
 const clock = new THREE.Clock();
+let lastShield = state.shields;
+
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (!game.running) { renderer.render(game.space.scene, game.space.camera); return; }
+  if (!game.running) {
+    game.space.titleTick(dt);
+    composers.space.render();
+    return;
+  }
 
   const active = game.mode === 'space' ? game.space : game.surface;
-  input.enabled = !game.paused && !game.map.open && input.locked;
+  const blocked = game.paused || game.map.open || game.docked;
+  input.enabled = !blocked && input.locked;
 
-  if (!game.paused && !game.map.open) {
+  if (!blocked) {
+    state.playTime += dt;
     active.update(dt);
-    if (game.mode === 'space' && game.space.landRequest) landOn(game.space.landRequest);
-    if (game.mode === 'surface' && game.surface.launchRequest) launchToSpace();
+    if (game.mode === 'space') {
+      if (game.space.landRequest) landOn(game.space.landRequest);
+      else if (game.space.dockRequest) dockAtStation();
+    } else if (game.surface.launchRequest) {
+      launchToSpace();
+    }
+    lastShield = state.shields;
   } else {
     input.consumeMouse();
     ui.target(null);
-    ui.prompt(game.paused || game.map.open ? '' : 'Click to resume — mouse released');
+    ui.prompt(blocked && !game.paused && !game.map.open && !game.docked ? 'Click to resume — mouse released' : '');
   }
+
+  if (!input.locked && !blocked) ui.prompt('Click to capture mouse');
 
   game.map.tick(dt);
   ui.update(active.info?.());
-  renderer.render(active.scene, active.camera);
+  composers[game.mode].render();
 }
 
 resize();
 loop();
 
-// expose for debugging
-window.FIREBROX = { game, state, RESOURCES };
+window.FIREBROX = { game, state, stats, RESOURCES, renderer };
