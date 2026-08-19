@@ -7,7 +7,7 @@ import { state, stats, addResource, discover, spendResources, hasResources } fro
 import { ui } from './ui.js';
 import {
   buildShip, radialSprite, buildMonolith, buildCrashedShip, buildOutpost,
-  makeStarfield, buildSentinel, buildAurora,
+  makeStarfield, buildSentinel, buildAurora, buildPortal,
 } from './assets3d.js';
 import * as missions from './missions.js';
 import { makeName, loreLine } from './universe.js';
@@ -46,6 +46,9 @@ export class SurfaceMode {
     this.boltPool = [];
     this.hitTimer = 0;
     this.deaths = 0;
+    this.portal = null;
+    this.portalRequest = null;
+    this.portalHold = 0;
     this.bob = 0;
     this.stepTimer = 0;
 
@@ -229,6 +232,13 @@ export class SurfaceMode {
     for (const c of this.creatures) this.scene.remove(c.mesh);
     this.creatures = [];
 
+    // ancient portal — one per planet, on roughly a third of worlds
+    if (this.portal) { this.scene.remove(this.portal); this.portal = null; }
+    this.hasPortal = rng.chance(0.34);
+    this.portalGlyphs = Array.from({ length: 6 }, () => '0123456789ABCDEF'[rng.int(0, 15)]).join('');
+    this.portalTargetSystem = rng.int(0, 100000);
+    this.portalTargetPlanet = rng.int(0, 5);
+
     this.pos.set(rng.float(-300, 300), 0, rng.float(-300, 300));
     this.ensureChunks(true);
     this.pos.y = this.height(this.pos.x, this.pos.z) + EYE + 0.2;
@@ -238,6 +248,19 @@ export class SurfaceMode {
     this.vel.set(0, 0, 0);
     this.yaw = rng.float(0, Math.PI * 2);
     this.pitch = -0.05;
+    if (this.hasPortal) {
+      const pa = rng.float(0, Math.PI * 2);
+      const pd = rng.float(90, 260);
+      const px = this.pos.x + Math.cos(pa) * pd;
+      const pz = this.pos.z + Math.sin(pa) * pd;
+      const portal = buildPortal(this.crystalColor.getStyle());
+      portal.position.set(px, this.height(px, pz), pz);
+      portal.rotation.y = rng.float(0, Math.PI * 2);
+      portal.userData.glyphs = this.portalGlyphs;   // keep the builder's refs (inner disc)
+      this.scene.add(portal);
+      this.portal = portal;
+    }
+
     this.spawnCreatures();
     state.visitedPlanets[planet.seed] = true;
   }
@@ -938,6 +961,7 @@ export class SurfaceMode {
 
   waypoints() {
     const list = [{ pos: this.ship.position, color: '#63e6ff', label: 'SHIP' }];
+    if (this.portal) list.push({ pos: this.portal.position, color: '#ffb066', label: 'PORTAL' });
     for (const s of this.structures) {
       if (s.position.distanceTo(this.pos) < 400) {
         list.push({ pos: s.position, color: s.userData.used ? '#8a8a8a' : '#ff9f43', label: s.userData.name.toUpperCase() });
@@ -1019,6 +1043,31 @@ export class SurfaceMode {
         ui.log('Launch thrusters refuelled', 'good');
         audio.pickup();
         input.keys.delete('KeyG');
+      }
+    }
+
+    // ancient portal
+    this.portalRequest = null;
+    if (this.portal) {
+      this.portal.userData.inner.material.opacity = 0.22 + Math.sin(this.time * 2) * 0.12;
+      this.portal.rotation.y += dt * 0.05;
+      const pd = this.portal.position.distanceTo(this.pos);
+      if (pd < 18) {
+        tName = 'ANCIENT PORTAL';
+        tSub = `glyph address ${this.portalGlyphs} · hold <b>E</b> to step through`;
+        prompt = prompt || 'Hold <b>E</b> to activate the portal';
+        if (input.down('KeyE')) {
+          this.portalHold += dt;
+          scanPct = Math.min(1, this.portalHold / 1.4);
+          if (this.portalHold > 1.4) {
+            this.portalHold = 0;
+            this.portalRequest = {
+              systemHash: this.portalTargetSystem,
+              planetIndex: this.portalTargetPlanet,
+              glyphs: this.portalGlyphs,
+            };
+          }
+        } else this.portalHold = 0;
       }
     }
 

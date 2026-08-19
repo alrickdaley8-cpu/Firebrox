@@ -1,6 +1,9 @@
 // HUD / overlay management.
-import { state, stats, UPGRADES, SHIPS, DEFAULT_SETTINGS, buyUpgrade, buyShip, renameDiscovery } from './state.js';
-import { RESOURCES, ECONOMIES } from './universe.js';
+import {
+  state, stats, UPGRADES, SHIPS, DEFAULT_SETTINGS,
+  buyUpgrade, buyShip, buyDrive, renameDiscovery,
+} from './state.js';
+import { RESOURCES, ECONOMIES, DRIVES, GALAXIES } from './universe.js';
 import { RECIPES, canCraft, craft } from './crafting.js';
 import * as missions from './missions.js';
 
@@ -37,6 +40,7 @@ export const ui = {
     }
     $('btn-trade-close').onclick = () => this.closeTrade();
     $('btn-craft-close').onclick = () => this.closeCraft();
+    $('btn-anomaly-close').onclick = () => this.closeAnomaly();
     $('btn-settings-close').onclick = () => this.closeSettings();
     $('btn-settings-reset').onclick = () => {
       Object.assign(state.settings, DEFAULT_SETTINGS);
@@ -60,6 +64,7 @@ export const ui = {
       ly: $('hud-ly'), mode: $('hud-mode'), system: $('hud-system'),
       planetLabel: $('hud-planet-label'), planet: $('hud-planet'), conditions: $('hud-conditions'),
       radarWrap: $('radar-wrap'), compassWrap: $('compass-wrap'),
+      galaxy: $('hud-galaxy'),
       missionTracker: $('mission-tracker'), missionList: $('mission-list'),
       sentinelAlert: $('sentinel-alert'), sentinelPips: $('sentinel-pips'),
       bars: {}, slots: {},
@@ -115,6 +120,7 @@ export const ui = {
     this.set(r.mode, 'mode', this.mode.toUpperCase());
 
     if (info) {
+      this.set(r.galaxy, 'galaxy', info.galaxy || 'Euclid-VII');
       this.set(r.system, 'system', info.system || '—');
       this.set(r.planetLabel, 'planetLabel', info.planetLabel || 'Location');
       this.set(r.planet, 'planet', info.planet || 'Deep Space');
@@ -330,6 +336,78 @@ export const ui = {
 
   missionDone(m) {
     this.log(`MISSION READY — ${m.title} · claim at any station`, 'good');
+  },
+
+  // ---------------------------------------------------------- space anomaly
+  openAnomaly(onClose) {
+    this.onAnomalyClose = onClose;
+    $('anomaly').classList.remove('hidden');
+    this.renderAnomaly();
+  },
+  closeAnomaly() {
+    $('anomaly').classList.add('hidden');
+    this.onAnomalyClose?.();
+  },
+  renderAnomaly() {
+    $('anomaly-nanites').textContent = Math.floor(state.nanites).toLocaleString();
+    $('anomaly-drives').innerHTML = Object.entries(DRIVES).map(([k, d]) => {
+      const owned = state.drives[k];
+      return `<div class="drive ${owned ? 'owned' : ''}">
+        <div class="d-head">${d.label}</div>
+        <div class="d-desc">Unlocks warping to ${d.unlocks}</div>
+        <button data-drive="${k}" ${owned || state.nanites < d.nanites ? 'disabled' : ''}>
+          ${owned ? 'INSTALLED' : d.nanites + ' nanites'}
+        </button>
+      </div>`;
+    }).join('');
+
+    const exchange = [
+      { label: 'Exchange 250 nanites → 60,000 units', nanites: 250, units: 60000 },
+      { label: 'Exchange 60,000 units → 200 nanites', units: 60000, nanites: -200 },
+      { label: 'Full hull, shield & fuel restoration', nanites: 120, repair: true },
+    ];
+    $('anomaly-exchange').innerHTML = exchange.map((e, i) => `
+      <div class="buy-row"><span>${e.label}</span><button data-ex="${i}">Accept</button></div>`).join('');
+
+    const visited = state.visitedGalaxies.length;
+    $('anomaly-log').innerHTML = `
+      <div class="cols">
+        <span>Galaxies charted: <em>${visited}/${GALAXIES.length}</em></span>
+        <span>Wormholes taken: <em>${state.wormholesUsed}</em></span>
+        <span>Portals used: <em>${state.portalsUsed}</em></span>
+        <span>Core breaches: <em>${state.coreJumps}</em></span>
+      </div>`;
+
+    $('anomaly').querySelectorAll('[data-drive]').forEach((btn) => {
+      btn.onclick = () => {
+        const k = btn.dataset.drive;
+        const res = buyDrive(k, DRIVES[k].nanites);
+        if (res === 'ok') this.log(`${DRIVES[k].label} installed — new stars are within reach`, 'good');
+        else if (res === 'poor') this.log('Not enough nanites', 'bad');
+        this.renderAnomaly();
+      };
+    });
+    $('anomaly').querySelectorAll('[data-ex]').forEach((btn) => {
+      btn.onclick = () => {
+        const e = exchange[Number(btn.dataset.ex)];
+        if (e.repair) {
+          if (state.nanites < e.nanites) return this.log('Not enough nanites', 'bad');
+          state.nanites -= e.nanites;
+          state.shipHealth = 100; state.shields = stats.shieldMax; state.suitShield = stats.suitShieldMax;
+          state.launchFuel = 100; state.life = 100; state.hazardProtection = 100;
+          this.log('The Anomaly restores everything', 'good');
+        } else if (e.nanites > 0) {
+          if (state.nanites < e.nanites) return this.log('Not enough nanites', 'bad');
+          state.nanites -= e.nanites; state.units += e.units;
+          this.log(`+${e.units.toLocaleString()} units`, 'good');
+        } else {
+          if (state.units < e.units) return this.log('Not enough units', 'bad');
+          state.units -= e.units; state.nanites += -e.nanites;
+          this.log(`+${-e.nanites} nanites`, 'good');
+        }
+        this.renderAnomaly();
+      };
+    });
   },
 
   // ---------------------------------------------------------- crafting

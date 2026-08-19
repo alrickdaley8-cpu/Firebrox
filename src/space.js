@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {
   planetTextures, makeStarfield, makeNebula, buildShip, buildPirate,
   buildStation, radialSprite, atmosphereMaterial, buildFreighter,
-  buildCargoPod, buildBlackHole,
+  buildCargoPod, buildBlackHole, buildWormhole, buildAnomaly,
 } from './assets3d.js';
 import * as missions from './missions.js';
 import { input } from './input.js';
@@ -115,6 +115,11 @@ export class SpaceMode {
     this.freighter = null;
     this.pods = [];
     this.blackHole = null;
+    this.wormhole = null;
+    this.anomaly = null;
+    this.wormholeRequest = false;
+    this.anomalyRequest = false;
+    this.anomalyHold = 0;
     this.blackHoleRequest = false;
     this.coreRequest = false;
     this.warnedCore = false;
@@ -212,6 +217,9 @@ export class SpaceMode {
     for (const pod of this.pods) this.scene.remove(pod);
     this.pods = [];
     if (this.freighter) { this.scene.remove(this.freighter); this.freighter = null; }
+    if (this.wormhole) { this.scene.remove(this.wormhole); this.wormhole = null; }
+    this.transitCooldown = 5;
+    if (this.anomaly) { this.scene.remove(this.anomaly); this.anomaly = null; }
     this.warnedCore = false;
     this.bolts.forEach((b) => { b.mesh.visible = false; this.boltPool.push(b); });
     this.bolts.length = 0;
@@ -340,6 +348,31 @@ export class SpaceMode {
       this.blackHole = bh;
     }
 
+    // wormhole mouth
+    if (system.wormholeTo != null || system.intergalactic) {
+      const wh = buildWormhole(
+        system.intergalactic ? '#ffd166' : '#7d5bff',
+        system.intergalactic ? '#ff7de0' : '#63e6ff'
+      );
+      const wa = rng.float(0, Math.PI * 2);
+      const wd = system.planets[0].orbit * rng.float(0.8, 1.3);
+      wh.position.set(Math.cos(wa) * wd, rng.float(-600, 900), Math.sin(wa) * wd);
+      wh.rotation.set(rng.float(-0.4, 0.4), rng.float(0, Math.PI * 2), 0);
+      this.scene.add(wh);
+      this.wormhole = wh;
+      this.wormholeIntergalactic = !!system.intergalactic;
+    }
+
+    // space anomaly
+    if (system.hasAnomaly) {
+      const an = buildAnomaly();
+      const aa = rng.float(0, Math.PI * 2);
+      const ad = system.planets[0].orbit * rng.float(0.35, 0.6);
+      an.position.set(Math.cos(aa) * ad, rng.float(300, 1100), Math.sin(aa) * ad);
+      this.scene.add(an);
+      this.anomaly = an;
+    }
+
     // asteroid belt
     const astMat = new THREE.MeshStandardMaterial({ color: '#8b7d6b', roughness: 1, flatShading: true });
     const beltR = 9000 + rng.float(0, 4000);
@@ -421,6 +454,8 @@ export class SpaceMode {
     const ship = this.ship;
     this.blackHoleRequest = false;
     this.coreRequest = false;
+    this.wormholeRequest = false;
+    this.anomalyRequest = false;
     const m = input.consumeMouse();
 
     const sens = 0.0022;
@@ -495,9 +530,19 @@ export class SpaceMode {
   }
 
   updateSpaceObjects(dt) {
+    this.transitCooldown = Math.max(0, this.transitCooldown - dt);
     for (const pod of this.pods) {
       pod.rotation.x += pod.userData.spin.x * dt;
       pod.rotation.y += pod.userData.spin.y * dt;
+    }
+    if (this.wormhole) {
+      this.wormhole.userData.throat.material.uniforms.uTime.value += dt;
+      this.wormhole.rotation.z += dt * 0.06;
+      const wd = this.wormhole.position.distanceTo(this.ship.position);
+      if (wd < 300 && this.transitCooldown <= 0) this.wormholeRequest = true;
+    }
+    if (this.anomaly) {
+      this.anomaly.rotation.y += dt * 0.05;
     }
     if (this.blackHole) {
       for (const d of this.blackHole.userData.discs) d.rotation.z += dt * 0.25;
@@ -508,7 +553,7 @@ export class SpaceMode {
         const dir = this.blackHole.position.clone().sub(this.ship.position).normalize();
         this.ship.position.addScaledVector(dir, pull);
         this.camShake = Math.max(this.camShake, (1 - d / 2600) * 0.6);
-        if (d < 620) this.blackHoleRequest = true;
+        if (d < 620 && this.transitCooldown <= 0) this.blackHoleRequest = true;
       }
     }
     // stars are hot: coronal damage, unless you are diving into the core on purpose
@@ -850,6 +895,31 @@ export class SpaceMode {
       }
     }
 
+    if (this.anomaly) {
+      const ad = this.anomaly.position.distanceTo(this.ship.position);
+      if (ad < 1500) {
+        tName = 'SPACE ANOMALY';
+        tSub = `exotic technology · nanite exchange · ${Math.round(ad)} u`;
+        if (ad < 520) {
+          prompt = 'Hold <b>E</b> to dock with the Anomaly';
+          if (input.down('KeyE')) {
+            this.anomalyHold += dt;
+            if (this.anomalyHold > 0.8) { this.anomalyHold = 0; this.anomalyRequest = true; }
+          } else this.anomalyHold = 0;
+        }
+      }
+    }
+
+    if (this.wormhole && !tName) {
+      const wd = this.wormhole.position.distanceTo(this.ship.position);
+      if (wd < 6000) {
+        tName = this.wormholeIntergalactic ? 'INTERGALACTIC GATE' : 'WORMHOLE';
+        tSub = this.wormholeIntergalactic
+          ? `unstable rift to another galaxy · ${Math.round(wd)} u · fly in`
+          : `stable shortcut across the galaxy · ${Math.round(wd)} u · fly in`;
+      }
+    }
+
     if (this.freighter && !tName) {
       const fd = this.freighter.position.distanceTo(this.ship.position);
       if (fd < 3000) {
@@ -888,6 +958,8 @@ export class SpaceMode {
     if (this.freighter) push(this.freighter.position, '#9dffc4', 'freighter');
     for (const pod of this.pods) push(pod.position, '#ffd166', 'pod');
     if (this.blackHole) push(this.blackHole.position, '#c48fff', 'blackhole');
+    if (this.wormhole) push(this.wormhole.position, '#7d5bff', 'wormhole');
+    if (this.anomaly) push(this.anomaly.position, '#8fd6ff', 'anomaly');
     push(this.sun.position, this.system?.starColor || '#ffd9a0', 'star');
     return out;
   }
@@ -904,7 +976,7 @@ export class SpaceMode {
       planet: loc,
       conditions: `${this.system?.starClass} star · ${this.system?.economy}<br>`
         + `Conflict: ${this.system?.danger} · Hostiles: ${this.enemies.length}<br>`
-        + `Core distance: ${Math.round(this.system?.distFromCore || 0)} ly · Galaxy ${state.galaxyIndex + 1}<br>`
+        + `Core distance: ${Math.round(this.system?.distFromCore || 0)} ly<br>`
         + `${stats.shipDef.label} · ${Math.round(this.speed).toLocaleString()} u/s`,
     };
   }

@@ -88,7 +88,8 @@
       <div><b>On foot</b><span>WASD move · Space jump/jetpack · Shift sprint · left-click mining beam</span></div>
       <div><b>Scanning</b><span>Hold <kbd>F</kbd> on worlds, lifeforms and alien ruins for units &amp; loot</span></div>
       <div><b>On-foot combat</b><span>Right-click boltcaster · sentinels escalate as you strip a planet</span></div>
-      <div><b>Tools</b><span><kbd>M</kbd> map · <kbd>C</kbd> refiner · <kbd>R</kbd> hazard · <kbd>G</kbd> feed fauna · <kbd>H</kbd> photo mode · <kbd>Tab</kbd> log</span></div>
+      <div><b>Wormholes &amp; portals</b><span>Fly into a wormhole to cross the galaxy · step through ancient portals on foot</span></div>
+      <div><b>Tools</b><span><kbd>M</kbd> map · <kbd>C</kbd> refiner · <kbd>R</kbd> hazard · <kbd>G</kbd> feed fauna · <kbd>H</kbd> photo · <kbd>Tab</kbd> log</span></div>
     </div>
     <div class="hint">Click anywhere in the game to capture the mouse. <kbd>Esc</kbd> releases it.</div>
   </div>
@@ -98,7 +99,7 @@
 <div id="map" class="overlay hidden">
   <div class="map-head">
     <h2>GALACTIC MAP — <span id="map-galaxy">Euclid-VII</span></h2>
-    <div class="map-sub">Click a star to select · <kbd>Enter</kbd> warp · <kbd>Q</kbd>/<kbd>E</kbd> rotate · <kbd>M</kbd> close</div>
+    <div class="map-sub">Click a star · <kbd>Enter</kbd> warp or take the next hop · <kbd>Q</kbd>/<kbd>E</kbd> rotate · wheel zoom · <kbd>G</kbd> intergalactic view · <kbd>M</kbd> close</div>
   </div>
   <canvas id="map-canvas"></canvas>
   <div class="map-info" id="map-info"></div>
@@ -147,6 +148,24 @@
       </div>
     </div>
     <div class="btn-row"><button id="btn-trade-close">Undock</button></div>
+  </div>
+</div>
+
+<!-- ============ SPACE ANOMALY ============ -->
+<div id="anomaly" class="overlay hidden">
+  <div class="craft-inner" style="width:min(880px,94vw)">
+    <h2>THE SPACE ANOMALY</h2>
+    <div class="map-sub">Exotic technology traded in nanites · a way station between galaxies</div>
+    <div class="anomaly-head">
+      <span class="label">Nanites</span><span class="mono" id="anomaly-nanites">0</span>
+    </div>
+    <div class="panel-title" style="margin-top:12px">Hyperdrive Upgrades</div>
+    <div id="anomaly-drives" class="drive-grid"></div>
+    <div class="panel-title" style="margin-top:14px">Exchange</div>
+    <div id="anomaly-exchange"></div>
+    <div class="panel-title" style="margin-top:14px">Traveller Record</div>
+    <div class="map-info" id="anomaly-log" style="min-width:0;margin:0"></div>
+    <div class="btn-row" style="margin-top:16px"><button id="btn-anomaly-close">Undock</button></div>
   </div>
 </div>
 

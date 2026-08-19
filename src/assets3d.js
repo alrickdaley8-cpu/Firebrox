@@ -616,3 +616,135 @@ export function buildAurora(color = '#7dffd0') {
   }
   return g;
 }
+
+// ---------------------------------------------------------------- wormholes & portals
+export function buildWormhole(colorA = '#7d5bff', colorB = '#63e6ff') {
+  const g = new THREE.Group();
+
+  const mouth = new THREE.Mesh(
+    new THREE.TorusGeometry(280, 46, 20, 64),
+    new THREE.MeshStandardMaterial({
+      color: colorA, emissive: colorA, emissiveIntensity: 1.6, metalness: 0.5, roughness: 0.3,
+    })
+  );
+  g.add(mouth);
+
+  const throat = new THREE.Mesh(
+    new THREE.SphereGeometry(250, 40, 28),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uA: { value: new THREE.Color(colorA) },
+        uB: { value: new THREE.Color(colorB) },
+      },
+      vertexShader: `
+        varying vec3 vPos;
+        void main() {
+          vPos = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform float uTime; uniform vec3 uA; uniform vec3 uB;
+        varying vec3 vPos;
+        void main() {
+          float a = atan(vPos.y, vPos.x);
+          float r = length(vPos.xy) / 250.0;
+          float swirl = sin(a * 6.0 + uTime * 2.0 - r * 12.0) * 0.5 + 0.5;
+          vec3 col = mix(uA, uB, swirl);
+          float fade = smoothstep(1.05, 0.15, r);
+          gl_FragColor = vec4(col * (0.35 + swirl), fade);
+        }`,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  g.add(throat);
+
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(320 + i * 60, 5, 8, 48),
+      new THREE.MeshBasicMaterial({
+        color: i % 2 ? colorB : colorA, transparent: true, opacity: 0.45,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    );
+    ring.rotation.set(Math.random(), Math.random(), Math.random());
+    g.add(ring);
+  }
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: radialSprite(colorB, 256, 2), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+  }));
+  glow.scale.setScalar(1800);
+  g.add(glow);
+
+  g.userData.throat = throat;
+  return g;
+}
+
+export function buildAnomaly() {
+  const g = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color: '#e8f4ff', metalness: 0.3, roughness: 0.25 });
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: '#8fd6ff', metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.55,
+    emissive: '#3f7fbf', emissiveIntensity: 0.7,
+  });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(180, 40, 28), shell);
+  body.scale.set(1, 0.72, 1);
+  g.add(body);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(196, 40, 28), glassMat);
+  dome.scale.set(1, 0.76, 1);
+  g.add(dome);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(190, 16, 12, 44), shell);
+  collar.rotation.x = Math.PI / 2;
+  g.add(collar);
+  const port = new THREE.Mesh(new THREE.CylinderGeometry(52, 52, 40, 20), new THREE.MeshStandardMaterial({
+    color: '#ffb066', emissive: '#ff8a3d', emissiveIntensity: 2.4,
+  }));
+  port.rotation.x = Math.PI / 2;
+  port.position.z = -190;
+  g.add(port);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: radialSprite('#8fd6ff', 256, 2.2), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+  }));
+  glow.scale.setScalar(1200);
+  g.add(glow);
+  return g;
+}
+
+// Ancient planetside teleport portal (the ring you walk through).
+export function buildPortal(color = '#ffb066') {
+  const g = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: '#3a3a44', roughness: 0.8, metalness: 0.3 });
+  const glowMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.2, roughness: 0.3 });
+
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(7, 0.9, 12, 40), stone);
+  ring.position.y = 8;
+  g.add(ring);
+
+  const inner = new THREE.Mesh(
+    new THREE.CircleGeometry(6.1, 40),
+    new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.32, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  );
+  inner.position.y = 8;
+  g.add(inner);
+
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const glyph = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.35), glowMat);
+    glyph.position.set(Math.cos(a) * 7, 8 + Math.sin(a) * 7, 0);
+    glyph.rotation.z = a;
+    g.add(glyph);
+  }
+
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(9, 11, 1.2, 16), stone);
+  g.add(base);
+  g.userData.inner = inner;
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}

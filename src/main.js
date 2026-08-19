@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { generateGalaxy, buildSystem, RESOURCES, distance } from './universe.js';
+import { generateGalaxy, buildSystem, RESOURCES, distance, GALAXIES, galaxyDef, DRIVES } from './universe.js';
 import {
   state, stats, saveGame, loadGame, clearSave, hasSave,
 } from './state.js';
@@ -47,7 +47,7 @@ const game = {
   mode: 'title',
   running: false,
   paused: false,
-  galaxy: generateGalaxy(state.galaxySeed, 320),
+  galaxy: generateGalaxy(state.galaxyIndex),
   system: null,
   space: new SpaceMode(),
   surface: new SurfaceMode(),
@@ -56,6 +56,7 @@ const game = {
   crafting: false,
   settingsOpen: false,
   photoMode: false,
+  atAnomaly: false,
 };
 
 game.map = new GalaxyMap(game.galaxy, (sys) => warpTo(sys.id));
@@ -184,6 +185,96 @@ function dockAtStation() {
   });
 }
 
+function wormholeTravel() {
+  const cur = game.galaxy.systems[state.systemId];
+  if (cur.intergalactic) {
+    ui.log('INTERGALACTIC RIFT — hold on to something', 'warn');
+    jumpToGalaxy(state.galaxyIndex + 1 + Math.floor(Math.random() * 3), 'rift');
+    return;
+  }
+  const target = game.galaxy.systems[cur.wormholeTo];
+  if (!target) return;
+  const d = distance(cur.pos, target.pos);
+  state.lightYears += d;
+  state.wormholesUsed++;
+  audio.sweep(180, 1800, 1.3, 'sine', 0.3);
+  ui.warpFlash(1200);
+  ui.loading('Threading the wormhole…');
+  setTimeout(() => {
+    enterSystem(target.id);
+    ui.loading(null);
+    ui.log(`WORMHOLE TRANSIT — ${d.toFixed(0)} ly to ${target.name}`, 'good');
+    input.lock();
+  }, 700);
+}
+
+function portalTravel(req) {
+  const sysId = req.systemHash % game.galaxy.systems.length;
+  const sys = buildSystem(game.galaxy.systems[sysId]);
+  const planet = sys.planets[req.planetIndex % sys.planets.length];
+  state.portalsUsed++;
+  audio.sweep(900, 120, 1.4, 'triangle', 0.3);
+  ui.warpFlash(1400);
+  ui.loading(`Portal ${req.glyphs} — resolving address…`);
+  setTimeout(() => {
+    state.systemId = sysId;
+    game.system = sys;
+    game.space.setSystem(sys, { fromPlanet: planet.index });
+    game.surface.setPlanet(planet, sys);
+    game.mode = 'surface';
+    ui.mode = 'surface';
+    ui.loading(null);
+    ui.log(`PORTAL TRANSIT — ${planet.name} in ${sys.name}`, 'good');
+    ui.log('Your ship was summoned to the portal site', '');
+    input.lock();
+  }, 900);
+}
+
+function jumpToGalaxy(index, reason = 'core') {
+  const idx = ((index % GALAXIES.length) + GALAXIES.length) % GALAXIES.length;
+  state.galaxyIndex = idx;
+  if (!state.visitedGalaxies.includes(idx)) state.visitedGalaxies.push(idx);
+  game.galaxy = generateGalaxy(idx);
+  game.map.setGalaxy(game.galaxy);
+  state.visitedSystems = {};
+  state.shipHealth = reason === 'core' ? 100 : Math.max(15, state.shipHealth - 35);
+  if (reason === 'core') {
+    state.coreJumps++;
+    state.units += 250000;
+    state.nanites += 1500;
+  }
+  state.inventory.warpcell = Math.max(state.inventory.warpcell, 3);
+  ui.warpFlash(2400);
+  audio.sweep(60, 3000, 3, 'sine', 0.4);
+  const def = galaxyDef(idx);
+  ui.loading(`Crossing into ${def.name}…`);
+  setTimeout(() => {
+    enterSystem(Math.floor(Math.random() * game.galaxy.systems.length));
+    ui.loading(null);
+    ui.log(`GALAXY ${idx + 1}/${GALAXIES.length} — ${def.name} · ${def.type} · hostility ${def.traits.hostility.toFixed(2)}×`, 'good');
+    if (reason === 'core') ui.log('Core breach bonus: +250,000 units, +1500 nanites', 'good');
+    input.lock();
+  }, 1400);
+}
+
+function dockAtAnomaly() {
+  game.atAnomaly = true;
+  input.unlock();
+  state.life = 100;
+  state.hazardProtection = 100;
+  ui.openAnomaly(() => {
+    game.atAnomaly = false;
+    const an = game.space.anomaly;
+    if (an) {
+      const away = game.space.ship.position.clone().sub(an.position).normalize();
+      if (away.lengthSq() < 0.1) away.set(0, 1, 0);
+      game.space.ship.position.copy(an.position).addScaledVector(away, 950);
+      game.space.camPos.copy(game.space.ship.position);
+    }
+    input.lock();
+  });
+}
+
 function blackHoleJump() {
   const cur = game.galaxy.systems[state.systemId];
   // fall inward: pick a system much closer to the core, at most 2500 ly away
@@ -204,27 +295,6 @@ function blackHoleJump() {
     ui.log(`SINGULARITY TRANSIT — ${d.toFixed(0)} ly toward the core. Hull scarred.`, 'warn');
     input.lock();
   }, 900);
-}
-
-function enterNewGalaxy() {
-  state.galaxyIndex++;
-  state.galaxySeed = `firebrox-${state.galaxyIndex}`;
-  game.galaxy = generateGalaxy(state.galaxySeed, 320);
-  game.map = new GalaxyMap(game.galaxy, (sys) => warpTo(sys.id));
-  state.visitedSystems = {};
-  state.units += 250000;
-  state.nanites += 1500;
-  state.shipHealth = 100;
-  state.inventory.warpcell = Math.max(state.inventory.warpcell, 3);
-  ui.warpFlash(2400);
-  audio.sweep(60, 3000, 3, 'sine', 0.4);
-  ui.loading('Passing through the galactic core…');
-  setTimeout(() => {
-    enterSystem(Math.floor(Math.random() * game.galaxy.systems.length));
-    ui.loading(null);
-    ui.log(`GALAXY ${state.galaxyIndex + 1} — you broke through the core. +250,000 units, +1500 nanites.`, 'good');
-    input.lock();
-  }, 1400);
 }
 
 function openCrafting() {
@@ -287,6 +357,10 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Escape' || e.code === 'KeyE') ui.closeTrade();
     return;
   }
+  if (game.atAnomaly) {
+    if (e.code === 'Escape' || e.code === 'KeyE') ui.closeAnomaly();
+    return;
+  }
   if (game.crafting) {
     if (e.code === 'Escape' || e.code === 'KeyC') ui.closeCraft();
     return;
@@ -300,6 +374,9 @@ addEventListener('keydown', (e) => {
       if (game.mode !== 'space') { ui.log('Galaxy map is only available in flight', 'warn'); break; }
       if (game.map.open) { game.map.hide(); input.lock(); }
       else { input.unlock(); game.map.show(state.systemId); }
+      break;
+    case 'KeyG':
+      if (game.map.open) { game.map.toggleView(); }
       break;
     case 'Enter':
       if (game.map.open && !game.map.tryWarp()) {
@@ -341,19 +418,25 @@ function loop() {
   }
 
   const active = game.mode === 'space' ? game.space : game.surface;
-  const blocked = game.paused || game.map.open || game.docked || game.crafting || game.settingsOpen;
+  const blocked = game.paused || game.map.open || game.docked || game.crafting
+    || game.settingsOpen || game.atAnomaly;
   input.enabled = !blocked && input.locked;
 
   if (!blocked) {
     state.playTime += dt;
     active.update(dt);
     if (game.mode === 'space') {
-      if (game.space.coreRequest) enterNewGalaxy();
+      if (game.space.coreRequest) jumpToGalaxy(state.galaxyIndex + 1, 'core');
       else if (game.space.blackHoleRequest) blackHoleJump();
+      else if (game.space.wormholeRequest) wormholeTravel();
+      else if (game.space.anomalyRequest) dockAtAnomaly();
       else if (game.space.landRequest) landOn(game.space.landRequest);
       else if (game.space.dockRequest) dockAtStation();
     } else if (game.surface.launchRequest) {
       launchToSpace();
+    } else if (game.surface.portalRequest) {
+      portalTravel(game.surface.portalRequest);
+      game.surface.portalRequest = null;
     }
     lastShield = state.shields;
     gatherTick -= dt;
@@ -370,7 +453,9 @@ function loop() {
   if (!input.locked && !blocked) ui.prompt('Click to capture mouse');
 
   game.map.tick(dt);
-  ui.update(active.info?.());
+  const info = active.info?.();
+  if (info) info.galaxy = game.galaxy.name;
+  ui.update(info);
   composers[game.mode].render();
 }
 

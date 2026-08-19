@@ -290,3 +290,13 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-fa
 }
 .disc-name:hover { border-color: rgba(120, 220, 255, 0.25); }
 .disc-name:focus { outline: none; border-color: var(--accent2); background: rgba(10, 26, 38, 0.7); }
+
+/* ---------------- space anomaly ---------------- */
+.anomaly-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid rgba(120,220,255,0.18); padding-bottom: 8px; }
+.anomaly-head .mono { font-size: 20px; color: #8fd6ff; }
+.drive-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.drive { border: 1px solid rgba(120, 220, 255, 0.22); border-radius: 4px; padding: 12px 14px; background: rgba(10, 26, 38, 0.5); }
+.drive.owned { border-color: rgba(157, 255, 196, 0.6); }
+.d-head { font-size: 12.5px; color: #fff; letter-spacing: 0.08em; margin-bottom: 4px; }
+.d-desc { font-size: 10px; color: rgba(190, 225, 245, 0.7); line-height: 1.45; min-height: 28px; margin-bottom: 8px; }
+.drive button { width: 100%; padding: 5px; font-size: 9.5px; }

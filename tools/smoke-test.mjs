@@ -83,7 +83,7 @@ ui.showHUD(true);
 input.locked = true;
 input.enabled = true;
 
-const galaxy = generateGalaxy('firebrox-prime', 320);
+const galaxy = generateGalaxy(0);
 const space = new SpaceMode();
 const surface = new SurfaceMode();
 const map = new GalaxyMap(galaxy, () => {});
@@ -279,12 +279,133 @@ document.querySelector('#trade-missions [data-accept]')?.click();
 ui.closeTrade();
 console.log('missions active after accept:', state.missions.length);
 
+// ---- GALAXIES, WORMHOLES, PORTALS, ANOMALY ---------------------------
+const uni = await import(ROOT + '/src/universe.js');
+console.log('galaxy roster:', uni.GALAXIES.length, '·', uni.GALAXIES.slice(0, 4).map((g) => `${g.name} (${g.type})`).join(', '), '…');
+for (let gi = 0; gi < uni.GALAXIES.length; gi++) {
+  const g = uni.generateGalaxy(gi);
+  const stranded = g.systems.filter((sy) => !g.systems.some((o) => o !== sy && uni.distance(sy.pos, o.pos) <= 220)).length;
+  if (stranded) console.log('  !! stranded systems in', g.name, stranded);
+}
+console.log('all galaxies generated, none stranded');
+
+const g0 = uni.generateGalaxy(0);
+console.log('wormhole pairs:', g0.wormholes.length, '· intergalactic gate:', g0.systems[g0.gateId]?.name);
+const noDrives = { cadmium: false, emeril: false, indium: false };
+const allDrives = { cadmium: true, emeril: true, indium: true };
+const gatedCount = g0.systems.filter((sy) => !uni.canWarpTo(sy, noDrives)).length;
+console.log('gated systems without drives:', gatedCount, '/', g0.systems.length);
+const r1 = uni.planRoute(g0, 0, g0.coreId, 220, noDrives);
+const r2 = uni.planRoute(g0, 0, g0.coreId, 220, allDrives);
+console.log('route to core — basic drive:', r1 ? r1.length + ' hops' : 'blocked', '· all drives:', r2 ? r2.length + ' hops' : 'blocked');
+let reach = 0, reachNoDrive = 0;
+for (let i = 0; i < 40; i++) {
+  const t = Math.floor((i / 40) * g0.systems.length);
+  if (uni.planRoute(g0, 0, t, 220, allDrives)) reach++;
+  if (uni.planRoute(g0, 0, t, 220, noDrives)) reachNoDrive++;
+}
+console.log('reachable sample — all drives:', reach + '/40', '· no drives:', reachNoDrive + '/40');
+
+// every hop of a plotted route must be legal
+function validateRoute(path, fromId) {
+  let cur = g0.systems[fromId];
+  for (const id of path) {
+    const next = g0.systems[id];
+    const legal = uni.distance(cur.pos, next.pos) <= 220 || cur.wormholeTo === id;
+    if (!legal) return `illegal hop ${cur.id}->${id} (${uni.distance(cur.pos, next.pos).toFixed(0)} ly)`;
+    if (!uni.canWarpTo(next, allDrives)) return `gated hop ${id}`;
+    cur = next;
+  }
+  return 'ok';
+}
+let bad = 0;
+for (let i = 0; i < 25; i++) {
+  const t = Math.floor(Math.random() * g0.systems.length);
+  const path = uni.planRoute(g0, 0, t, 220, allDrives);
+  if (path && validateRoute(path, 0) !== 'ok') { bad++; console.log('  route problem:', validateRoute(path, 0)); }
+}
+console.log('route validation over 25 destinations:', bad === 0 ? 'all legal' : bad + ' broken');
+const coreRoute = uni.planRoute(g0, 0, g0.coreId, 220, allDrives);
+console.log('core route hops:', coreRoute.length, '· start distFromCore', g0.systems[0].distFromCore.toFixed(0),
+  '· hop distances', coreRoute.map((id, i) => {
+    const a = i === 0 ? g0.systems[0] : g0.systems[coreRoute[i - 1]];
+    return (a.wormholeTo === id ? 'WH' : uni.distance(a.pos, g0.systems[id].pos).toFixed(0));
+  }).join(', '));
+
+// wormhole + anomaly objects in space
+const whSys = g0.systems.find((sy) => sy.wormholeTo != null);
+ui.mode = 'space';
+space.setSystem(buildSystem(whSys));
+console.log('wormhole system', whSys.name, '· mouth built:', !!space.wormhole, '· anomaly:', !!space.anomaly);
+input.keys = new Set();
+space.ship.position.copy(space.wormhole.position).add({ x: 0, y: 0, z: 200 });
+space.throttle = 0; space.speed = 0;
+let whHit = false;
+for (let i = 0; i < 420; i++) {
+  space.update(1 / 60);
+  if (space.wormholeRequest) whHit = true;
+}
+console.log('wormhole entry triggered:', whHit,
+  '· dist', space.wormhole.position.distanceTo(space.ship.position).toFixed(0),
+  '· cooldown', space.transitCooldown.toFixed(2));
+
+const anSys = g0.systems.find((sy) => sy.hasAnomaly && sy.wormholeTo == null);
+space.setSystem(buildSystem(anSys));
+space.ship.position.copy(space.anomaly.position).add({ x: 0, y: 0, z: 300 });
+space.throttle = 0; space.speed = 0;
+input.keys = new Set(['KeyE']);
+let anHit = false;
+for (let i = 0; i < 120; i++) { space.update(1 / 60); if (space.anomalyRequest) anHit = true; }
+input.keys = new Set();
+console.log('anomaly docking triggered:', anHit);
+
+// anomaly shop
+state.nanites = 3000;
+ui.openAnomaly(() => {});
+window.document.querySelectorAll('#anomaly-drives [data-drive]').forEach((b) => b.click());
+window.document.querySelector('#anomaly-exchange [data-ex]')?.click();
+ui.closeAnomaly();
+console.log('drives owned:', Object.entries(state.drives).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none',
+  '· nanites left', state.nanites);
+
+// planet portals
+ui.mode = 'surface';
+let portalFound = null;
+let scanned = 0;
+outer:
+for (let si = 3; si < 9; si++) {
+  const pSys = buildSystem(g0.systems[si]);
+  for (const pl of pSys.planets) {
+    scanned++;
+    surface.setPlanet(pl, pSys);
+    if (surface.portal) { portalFound = pl; break outer; }
+  }
+}
+console.log('planets scanned for portals:', scanned);
+console.log('portal world:', portalFound ? `${portalFound.name} glyphs ${surface.portalGlyphs}` : 'none in this system');
+if (portalFound) {
+  surface.pos.copy(surface.portal.position).add({ x: 3, y: 2, z: 0 });
+  input.keys = new Set(['KeyE']);
+  let req = null;
+  for (let i = 0; i < 200; i++) {
+    surface.scene.updateMatrixWorld(true);
+    surface.update(1 / 60);
+    if (surface.portalRequest) req = surface.portalRequest;
+  }
+  input.keys = new Set();
+  console.log('portal activated:', !!req, req ? `→ system hash ${req.systemHash % g0.systems.length}, planet ${req.planetIndex}` : '');
+}
+
 // ---- MAP + SAVE ------------------------------------------------------
 map.show(0);
 map.selected = 5;
 map.tick(0.016);
 map.updateInfo();
 console.log('map ok, jump range', stats.jumpRange, 'info len', window.document.getElementById('map-info').innerHTML.length);
+map.toggleView();
+map.tick(0.016);
+console.log('intergalactic view drew', map.view, '· galaxies plotted', (map._galaxyHits || []).length);
+map.toggleView();
 map.hide();
 
 ui.renderDiscoveries();

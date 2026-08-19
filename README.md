@@ -18,7 +18,32 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
                              # drives thousands of frames, asserts zero errors
 ```
 
-## What's new in the massive update
+## The galaxies update
+
+* **Sixteen named galaxies** — Euclid-VII, Hilbert Dimension, Calypso, Hesperius, Hyades,
+  Ickjamatew, Budullangr, Kikolgallr, Eltiensleen, Eissentam, Elkupalos, Aptarkaba,
+  Ontiniangp, Odiwagiri, Ogtialabi and Muhacksonto — each with its **own shape**
+  (spiral, barred, elliptical, ring, irregular), palette, size, and traits that change
+  play: hostility, resource richness and exotic-world frequency.
+* **Wormholes** — stable paired mouths scattered through every galaxy. Fly into one and
+  you come out hundreds of light years away, free of your jump range. The map draws the
+  whole network as arcs.
+* **The Gate** — one rare intergalactic rift per galaxy, out on the rim, that tears you
+  into an entirely different galaxy without going anywhere near the core.
+* **Ancient portals** — roughly a third of worlds hide a glyph portal. Step through it
+  and you are standing on a planet in a completely different star system, ship and all.
+* **Star-class gating & drives** — red, green, blue and pink dwarf stars need the
+  Cadmium, Emeril and Indium drives. Buy them with nanites at…
+* **The Space Anomaly** — a way station that appears in ~30% of systems. Nanite exchange,
+  hyperdrive upgrades, full restoration, and your traveller record.
+* **Route planner** — pick any star and the map plots a legal multi-jump path (wormholes
+  included, locked stars excluded). `Enter` takes the next hop automatically.
+* **Intergalactic map view** (`G` in the map) — all sixteen galaxies drawn as little
+  procedural portraits, showing which you have charted.
+* **The Core** now moves you to the *next named galaxy* rather than a reskin, with the
+  full 250,000 unit + 1,500 nanite breach bonus.
+
+## What's in the combat & economy update
 
 * **Sentinels & on-foot combat** — strip a planet and drones come looking. A 3-level
   wanted system escalates the swarm; fight back with the right-click boltcaster, an
@@ -44,9 +69,10 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
 
 ## The universe
 
-**320 star systems** in a four-armed spiral, each seeded with a name, star class,
-economy, wealth, conflict level, pirate population and 2–6 planets. Deterministic:
-the same galaxy exists on every machine, forever.
+**Up to 380 star systems per galaxy**, laid out by the galaxy's own shape function, each
+seeded with a name, star class, economy, wealth, conflict level, pirate population,
+wormhole links and 2–6 planets. Deterministic: the same sixteen galaxies exist on every
+machine, forever. Generation guarantees no system is ever stranded outside jump range.
 
 **Twelve biomes** — Lush, Scorched, Frozen, Toxic, Irradiated, Barren, Volcanic,
 Exotic, Oceanic, Fungal, Crystalline and Crimson — each with its own palette, sky,
@@ -99,7 +125,8 @@ and buy hyperdrive coils to reach further stars. Everything autosaves to localSt
 | **On foot** | `WASD` move · mouse look · `Space` jump / jetpack · `Shift` sprint · left-click mining beam |
 | **Interact** | Hold `E` to land, dock or launch · hold `F` to scan planets, lifeforms and ruins |
 | **On-foot combat** | Right-click boltcaster · sentinels escalate as you mine |
-| **Utility** | `M` galaxy map (`Enter` warp, `Q`/`E` rotate, wheel zoom) · `C` refiner · `R` recharge hazard · `G` refuel ship / feed fauna |
+| **Navigation** | `M` galaxy map · `Enter` warp / next hop · `G` intergalactic view · `Q`/`E` rotate · wheel zoom |
+| **Utility** | `C` refiner · `R` recharge hazard · `G` refuel ship / feed fauna |
 | **System** | `Tab` journey log · `H` photo mode · `Ctrl+S` save · `P` exposure · `Esc` release mouse |
 
 ## Layout

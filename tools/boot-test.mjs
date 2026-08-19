@@ -124,6 +124,9 @@ console.log('refiner open:', !document.getElementById('craft').classList.contain
 key('Escape'); frames(5);
 key('KeyM'); frames(5);
 console.log('galaxy map open:', !document.getElementById('map').classList.contains('hidden'));
+key('KeyG'); frames(5);
+console.log('intergalactic view:', G.game.map.view);
+key('KeyG'); frames(5);
 key('KeyM'); frames(5);
 key('Tab'); frames(5);
 console.log('pause/log open:', !document.getElementById('pause').classList.contains('hidden'));

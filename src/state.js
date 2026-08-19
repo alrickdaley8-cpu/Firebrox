@@ -1,7 +1,7 @@
 // Persistent player state: inventory, discoveries, ship, upgrades, missions, settings.
 import { RESOURCES } from './universe.js';
 
-const SAVE_KEY = 'firebrox.save.v3';
+const SAVE_KEY = 'firebrox.save.v4';
 
 export const UPGRADES = {
   hyperdrive: { label: 'Hyperdrive Coils', desc: '+120 ly jump range per rank', max: 4, cost: (r) => 25000 + r * 30000 },
@@ -75,7 +75,11 @@ export const state = {
   sentinelKills: 0,
   playTime: 0,
   galaxyIndex: 0,
-  galaxySeed: 'firebrox-prime',
+  visitedGalaxies: [0],
+  drives: { cadmium: false, emeril: false, indium: false },
+  route: null,             // { galaxyIndex, targetId, path: [ids] }
+  wormholesUsed: 0,
+  portalsUsed: 0,
   coreJumps: 0,
   settings: { ...DEFAULT_SETTINGS },
 };
@@ -153,6 +157,14 @@ export function buyShip(key) {
   return 'ok';
 }
 
+export function buyDrive(key, nanites) {
+  if (state.drives[key]) return 'owned';
+  if (state.nanites < nanites) return 'poor';
+  state.nanites -= nanites;
+  state.drives[key] = true;
+  return 'ok';
+}
+
 export function resourceLabel(key) {
   return RESOURCES[key]?.label || key;
 }
@@ -181,6 +193,8 @@ export function loadGame() {
     state.settings = { ...DEFAULT_SETTINGS, ...data.settings };
     state.missions = data.missions || [];
     state.ownedShips = data.ownedShips?.length ? data.ownedShips : ['shuttle'];
+    state.drives = { cadmium: false, emeril: false, indium: false, ...data.drives };
+    state.visitedGalaxies = data.visitedGalaxies?.length ? data.visitedGalaxies : [state.galaxyIndex || 0];
     return true;
   } catch (e) {
     return false;
