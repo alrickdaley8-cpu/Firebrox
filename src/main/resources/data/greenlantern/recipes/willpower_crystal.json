@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " E ",
+    "EDE",
+    " G "
+  ],
+  "key": {
+    "E": {"item": "minecraft:emerald"},
+    "D": {"item": "minecraft:diamond"},
+    "G": {"item": "minecraft:glowstone_dust"}
+  },
+  "result": {
+    "item": "greenlantern:willpower_crystal",
+    "count": 1
+  }
+}

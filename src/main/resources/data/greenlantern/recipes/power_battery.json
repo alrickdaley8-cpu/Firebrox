@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "IGI",
+    "ICI",
+    "IGI"
+  ],
+  "key": {
+    "I": {"item": "minecraft:iron_ingot"},
+    "G": {"item": "minecraft:glass_pane"},
+    "C": {"item": "greenlantern:willpower_crystal"}
+  },
+  "result": {
+    "item": "greenlantern:power_battery",
+    "count": 1
+  }
+}

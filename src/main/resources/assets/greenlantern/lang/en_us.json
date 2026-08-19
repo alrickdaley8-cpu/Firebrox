@@ -1,0 +1,31 @@
+{
+  "itemGroup.greenlantern.green_lantern": "Green Lantern",
+
+  "item.greenlantern.power_ring": "Power Ring",
+  "item.greenlantern.willpower_crystal": "Willpower Crystal",
+  "block.greenlantern.power_battery": "Power Battery",
+
+  "item.greenlantern.power_ring.energy": "Willpower: %s / %s",
+  "item.greenlantern.power_ring.construct": "Construct: %s",
+  "item.greenlantern.power_ring.hint": "R: activate  |  V/C: cycle construct  |  Right-click Battery to charge",
+
+  "construct.greenlantern.beam": "Energy Beam",
+  "construct.greenlantern.flight": "Flight",
+  "construct.greenlantern.shield": "Shield",
+  "construct.greenlantern.platform": "Platform",
+
+  "hud.greenlantern.willpower": "Willpower %s/%s",
+
+  "message.greenlantern.ring_charged": "The ring surges with willpower!",
+  "message.greenlantern.ring_full": "The ring is already at full charge.",
+  "message.greenlantern.ring_empty": "The ring is drained of willpower.",
+  "message.greenlantern.construct_selected": "Construct: %s",
+  "message.greenlantern.flight_on": "Flight engaged.",
+  "message.greenlantern.flight_off": "Flight disengaged.",
+  "message.greenlantern.shield_on": "A hard-light shield surrounds you.",
+
+  "key.greenlantern.activate": "Activate Construct",
+  "key.greenlantern.cycle_next": "Next Construct",
+  "key.greenlantern.cycle_prev": "Previous Construct",
+  "category.greenlantern": "Green Lantern"
+}

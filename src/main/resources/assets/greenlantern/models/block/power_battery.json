@@ -1,0 +1,42 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "greenlantern:block/power_battery",
+    "all": "greenlantern:block/power_battery"
+  },
+  "elements": [
+    {
+      "from": [3, 0, 3],
+      "to": [13, 2, 13],
+      "faces": {
+        "down":  {"uv": [3, 3, 13, 13], "texture": "#all", "cullface": "down"},
+        "up":    {"uv": [3, 3, 13, 13], "texture": "#all"},
+        "north": {"uv": [3, 14, 13, 16], "texture": "#all"},
+        "south": {"uv": [3, 14, 13, 16], "texture": "#all"},
+        "west":  {"uv": [3, 14, 13, 16], "texture": "#all"},
+        "east":  {"uv": [3, 14, 13, 16], "texture": "#all"}
+      }
+    },
+    {
+      "from": [4, 2, 4],
+      "to": [12, 12, 12],
+      "faces": {
+        "north": {"uv": [4, 4, 12, 14], "texture": "#all"},
+        "south": {"uv": [4, 4, 12, 14], "texture": "#all"},
+        "west":  {"uv": [4, 4, 12, 14], "texture": "#all"},
+        "east":  {"uv": [4, 4, 12, 14], "texture": "#all"}
+      }
+    },
+    {
+      "from": [3, 12, 3],
+      "to": [13, 16, 13],
+      "faces": {
+        "up":    {"uv": [3, 3, 13, 13], "texture": "#all", "cullface": "up"},
+        "north": {"uv": [3, 0, 13, 4], "texture": "#all"},
+        "south": {"uv": [3, 0, 13, 4], "texture": "#all"},
+        "west":  {"uv": [3, 0, 13, 4], "texture": "#all"},
+        "east":  {"uv": [3, 0, 13, 4], "texture": "#all"}
+      }
+    }
+  ]
+}
