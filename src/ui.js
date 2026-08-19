@@ -20,6 +20,8 @@ export const ui = {
   init() {
     this.buildBars();
     this.buildInventory();
+    this.cache();
+    this.last = {};
     this.radarCanvas = $('radar');
     this.radarCtx = this.radarCanvas.getContext('2d');
     this.compassCanvas = $('compass');
@@ -31,6 +33,31 @@ export const ui = {
       c.width = w * scale; c.height = h * scale;
     }
     $('btn-trade-close').onclick = () => this.closeTrade();
+  },
+
+  // Cache every HUD node once — the loop then only touches what changed.
+  cache() {
+    this.refs = {
+      units: $('hud-units'), nanites: $('hud-nanites'), disc: $('hud-disc'),
+      ly: $('hud-ly'), mode: $('hud-mode'), system: $('hud-system'),
+      planetLabel: $('hud-planet-label'), planet: $('hud-planet'), conditions: $('hud-conditions'),
+      radarWrap: $('radar-wrap'), compassWrap: $('compass-wrap'),
+      bars: {}, slots: {},
+    };
+    for (const b of BAR_DEFS) {
+      const el = document.querySelector(`.bar[data-bar="${b.key}"]`);
+      this.refs.bars[b.key] = { el, fill: el.querySelector('.bar-fill'), val: el.querySelector('.bar-val') };
+    }
+    for (const k of Object.keys(RESOURCES)) {
+      const qt = document.querySelector(`[data-qt="${k}"]`);
+      this.refs.slots[k] = { qt, slot: qt.parentElement };
+    }
+  },
+
+  set(node, key, value) {
+    if (this.last[key] === value) return;
+    this.last[key] = value;
+    node.textContent = value;
   },
 
   buildBars() {
@@ -60,44 +87,60 @@ export const ui = {
   },
 
   update(info) {
-    $('hud-units').textContent = Math.floor(state.units).toLocaleString();
-    $('hud-nanites').textContent = Math.floor(state.nanites).toLocaleString();
-    $('hud-disc').textContent = Object.keys(state.discoveries).length;
-    $('hud-ly').textContent = state.lightYears.toFixed(1) + ' ly';
-    $('hud-mode').textContent = this.mode.toUpperCase();
+    const r = this.refs;
+    this.set(r.units, 'units', Math.floor(state.units).toLocaleString());
+    this.set(r.nanites, 'nanites', Math.floor(state.nanites).toLocaleString());
+    this.set(r.disc, 'disc', String(Object.keys(state.discoveries).length));
+    this.set(r.ly, 'ly', state.lightYears.toFixed(1) + ' ly');
+    this.set(r.mode, 'mode', this.mode.toUpperCase());
 
     if (info) {
-      $('hud-system').textContent = info.system || '—';
-      $('hud-planet-label').textContent = info.planetLabel || 'Location';
-      $('hud-planet').textContent = info.planet || 'Deep Space';
-      $('hud-conditions').innerHTML = info.conditions || '';
-    }
-
-    for (const b of BAR_DEFS) {
-      const el = document.querySelector(`.bar[data-bar="${b.key}"]`);
-      if (!el) continue;
-      const visible = !b.modes || b.modes.includes(this.mode);
-      el.style.display = visible ? '' : 'none';
-      if (!visible) continue;
-      const max = b.max();
-      const v = Math.max(0, Math.min(max, state[b.key] ?? 0));
-      const pct = (v / max) * 100;
-      el.querySelector('.bar-fill').style.width = pct + '%';
-      el.querySelector('.bar-val').textContent = Math.round(v) + (b.key === 'shields' ? '' : '%');
-      el.classList.toggle('critical', pct < 22);
-    }
-
-    for (const k of Object.keys(RESOURCES)) {
-      const el = document.querySelector(`[data-qt="${k}"]`);
-      if (el) {
-        const q = Math.floor(state.inventory[k] || 0);
-        el.textContent = k === 'warpcell' ? q : `${q}`;
-        el.parentElement.classList.toggle('full', q >= stats.stackLimit);
+      this.set(r.system, 'system', info.system || '—');
+      this.set(r.planetLabel, 'planetLabel', info.planetLabel || 'Location');
+      this.set(r.planet, 'planet', info.planet || 'Deep Space');
+      const cond = info.conditions || '';
+      if (this.last.conditions !== cond) {
+        this.last.conditions = cond;
+        r.conditions.innerHTML = cond;
       }
     }
 
-    $('radar-wrap').classList.toggle('hidden', this.mode !== 'space');
-    $('compass-wrap').classList.toggle('hidden', this.mode !== 'surface');
+    for (const b of BAR_DEFS) {
+      const ref = r.bars[b.key];
+      if (!ref) continue;
+      const visible = !b.modes || b.modes.includes(this.mode);
+      if (this.last['vis:' + b.key] !== visible) {
+        this.last['vis:' + b.key] = visible;
+        ref.el.style.display = visible ? '' : 'none';
+      }
+      if (!visible) continue;
+      const max = b.max();
+      const v = Math.max(0, Math.min(max, state[b.key] ?? 0));
+      const pct = Math.round((v / max) * 1000) / 10;
+      if (this.last['bar:' + b.key] !== pct) {
+        this.last['bar:' + b.key] = pct;
+        ref.fill.style.width = pct + '%';
+        ref.val.textContent = Math.round(v) + (b.key === 'shields' ? '' : '%');
+        ref.el.classList.toggle('critical', pct < 22);
+      }
+    }
+
+    const limit = stats.stackLimit;
+    for (const k of Object.keys(RESOURCES)) {
+      const ref = r.slots[k];
+      const q = Math.floor(state.inventory[k] || 0);
+      if (this.last['inv:' + k] !== q) {
+        this.last['inv:' + k] = q;
+        ref.qt.textContent = q;
+        ref.slot.classList.toggle('full', q >= limit);
+      }
+    }
+
+    if (this.last.hudMode !== this.mode) {
+      this.last.hudMode = this.mode;
+      r.radarWrap.classList.toggle('hidden', this.mode !== 'space');
+      r.compassWrap.classList.toggle('hidden', this.mode !== 'surface');
+    }
   },
 
   log(msg, kind = '') {

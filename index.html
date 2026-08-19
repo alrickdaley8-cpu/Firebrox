@@ -135,8 +135,24 @@
   </div>
 </div>
 
+<div id="fatal" class="overlay hidden">
+  <div class="title-inner" style="max-width:640px">
+    <h2 style="letter-spacing:.3em;color:#ff7676">SYSTEM FAILURE</h2>
+    <p class="blurb" id="fatal-msg"></p>
+    <p class="hint">If this mentions WebGL, enable hardware acceleration in your browser settings and reload.</p>
+  </div>
+</div>
+
 <div id="loading" class="overlay hidden"><div class="load-inner"><div class="spinner"></div><div id="load-text">Generating world…</div></div></div>
 
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three/three.module.js",
+    "three/": "/vendor/three/"
+  }
+}
+</script>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -6,8 +6,16 @@ assets** — every star, planet texture, nebula, creature, ruin and sound effect
 generated from a seed at runtime.
 
 ```bash
-npm install
-npm run dev      # http://localhost:5173
+node server.mjs        # or: npm start   →  http://localhost:5173
+```
+
+**No build step and no runtime dependencies.** Three.js is vendored in `vendor/three/`
+and wired up with an import map, so the game is just static files — any static server
+(or `node server.mjs`) will do.
+
+```bash
+npm i -D jsdom && npm test   # headless smoke test: boots every module,
+                             # drives thousands of frames, asserts zero errors
 ```
 
 ## The universe
@@ -85,4 +93,7 @@ src/rng.js        seeded RNG and hashes
 src/state.js      inventory, upgrades, discoveries, save/load
 src/ui.js         HUD, scanner, compass, market and technology screens
 src/audio.js      synthesised SFX and engine hum
+server.mjs        zero-dependency static server
+vendor/three/     vendored three.js + postprocessing addons (import-mapped)
+tools/            headless jsdom smoke test
 ```

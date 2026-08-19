@@ -1,9 +1,9 @@
 // FIREBROX — entry point: renderer, post-processing, game modes, loop.
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { generateGalaxy, buildSystem, RESOURCES } from './universe.js';
 import {
   state, stats, saveGame, loadGame, clearSave, hasSave,
@@ -16,10 +16,26 @@ import { SurfaceMode } from './surface.js';
 import { GalaxyMap } from './map.js';
 import { audio } from './audio.js';
 
+function fatal(msg) {
+  const el = document.getElementById('fatal');
+  if (!el) return;
+  document.getElementById('fatal-msg').textContent = String(msg);
+  el.classList.remove('hidden');
+  document.getElementById('title')?.classList.add('hidden');
+}
+addEventListener('error', (e) => fatal(e.message || e.error));
+addEventListener('unhandledrejection', (e) => fatal(e.reason?.message || e.reason));
+
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({
-  canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance',
-});
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({
+    canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance',
+  });
+} catch (err) {
+  fatal('WebGL could not start: ' + err.message);
+  throw err;
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -231,12 +247,14 @@ addEventListener('keydown', (e) => {
 setInterval(() => { if (game.running && !game.paused) saveGame(); }, 30000);
 
 // ------------------------------------------------------------------ loop
-const clock = new THREE.Clock();
+let lastFrameTime = performance.now();
 let lastShield = state.shields;
 
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, clock.getDelta());
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
 
   if (!game.running) {
     game.space.titleTick(dt);

@@ -135,7 +135,7 @@ export class SurfaceMode {
     const b = planet.biome;
     this.amp = b.amp * rng.float(0.85, 1.4);
     this.mountain = rng.float(0.7, 1.6);
-    this.waterLevel = planet.biomeKey === 'ocean' ? 10 : rng.float(-28, -2);
+    this.waterLevel = planet.biomeKey === 'ocean' ? rng.float(0, 6) : rng.float(-28, -2);
     this.gravity = 19 * planet.gravity;
     this.palette = b.ground.map((c) => new THREE.Color(c));
     this.rockColor = new THREE.Color(b.rock);
@@ -362,11 +362,19 @@ export class SurfaceMode {
   scatterStructures(cx, cz) {
     const rng = new RNG(hash3(cx + 7777, cz - 313, this.planet.seed));
     const out = [];
-    const chance = 0.1 * this.planet.ruins;
+    const chance = 0.18 * this.planet.ruins;
     if (!rng.chance(chance)) return out;
-    const x = cx * CHUNK + rng.float(-40, 40);
-    const z = cz * CHUNK + rng.float(-40, 40);
-    const y = this.height(x, z);
+
+    // find dry, reasonably flat ground inside the chunk
+    let x = 0, z = 0, y = -Infinity;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const tx = cx * CHUNK + rng.float(-CHUNK * 0.42, CHUNK * 0.42);
+      const tz = cz * CHUNK + rng.float(-CHUNK * 0.42, CHUNK * 0.42);
+      const ty = this.height(tx, tz);
+      const slope = Math.abs(ty - this.height(tx + 6, tz)) + Math.abs(ty - this.height(tx, tz + 6));
+      if (ty > this.waterLevel + 2 && slope < 6) { x = tx; z = tz; y = ty; break; }
+      if (ty > y) { x = tx; z = tz; y = ty; }
+    }
     if (y < this.waterLevel + 2) return out;
 
     const kind = rng.pick(['monolith', 'crash', 'outpost']);

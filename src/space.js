@@ -14,6 +14,17 @@ import { BIOMES } from './universe.js';
 const UP = new THREE.Vector3(0, 1, 0);
 const FWD = new THREE.Vector3(0, 0, -1);
 
+// Distance from point p to the segment a->b (swept collision for fast projectiles).
+function segmentDistance(p, a, b) {
+  const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+  const apx = p.x - a.x, apy = p.y - a.y, apz = p.z - a.z;
+  const len2 = abx * abx + aby * aby + abz * abz;
+  let t = len2 > 0 ? (apx * abx + apy * aby + apz * abz) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const dx = apx - abx * t, dy = apy - aby * t, dz = apz - abz * t;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 class Projectile {
   constructor(mesh) {
     this.mesh = mesh;
@@ -96,8 +107,16 @@ export class SpaceMode {
     this.camPos = new THREE.Vector3();
     this.camShake = 0;
     this.clouds = [];
+    this._lookMat = new THREE.Matrix4();
+    this._prevBolt = new THREE.Vector3();
 
     this.buildTitleScene();
+  }
+
+  // Object3D.lookAt aims +Z at the target; our ship flies down -Z, so do it properly.
+  faceShip(target) {
+    this._lookMat.lookAt(this.ship.position, target, UP);
+    this.ship.quaternion.setFromRotationMatrix(this._lookMat);
   }
 
   // A pretty backdrop for the title screen, discarded once a real system loads.
@@ -269,10 +288,10 @@ export class SpaceMode {
     if (target) {
       const p = target.userData.planet;
       this.ship.position.copy(target.position).add(new THREE.Vector3(0, p.radius * 1.6, p.radius * 2.4));
-      this.ship.lookAt(target.position);
+      this.faceShip(target.position);
     } else {
       this.ship.position.set(system.planets[0].orbit * 0.6, 900, system.planets[0].orbit * 0.6);
-      this.ship.lookAt(0, 0, 0);
+      this.faceShip(this.planets[0] ? this.planets[0].position : new THREE.Vector3());
     }
     this.ship.up.set(0, 1, 0);
     this.velocity.set(0, 0, 0);
@@ -457,8 +476,8 @@ export class SpaceMode {
       e.cooldown -= dt;
       const aim = FWD.clone().applyQuaternion(e.mesh.quaternion).dot(toShip);
       if (e.cooldown <= 0 && d < 1400 && aim > 0.965) {
-        e.cooldown = 0.55 + Math.random() * 0.5;
-        this.fireBolt(e.mesh.position, toShip, true, 8);
+        e.cooldown = 0.8 + Math.random() * 0.6;
+        this.fireBolt(e.mesh.position, toShip, true, 6);
       }
 
       if (d > 9000) { this.enemyGroup.remove(e.mesh); this.enemies.splice(i, 1); }
@@ -487,18 +506,19 @@ export class SpaceMode {
   updateBolts(dt) {
     for (let i = this.bolts.length - 1; i >= 0; i--) {
       const b = this.bolts[i];
+      const prev = this._prevBolt.copy(b.mesh.position);
       b.mesh.position.addScaledVector(b.vel, dt);
       b.life -= dt;
       let dead = b.life <= 0;
 
       if (!dead && b.hostile) {
-        if (b.mesh.position.distanceTo(this.ship.position) < 9) {
+        if (segmentDistance(this.ship.position, prev, b.mesh.position) < 11) {
           dead = true;
           this.damagePlayer(b.dmg);
         }
       } else if (!dead) {
         for (const e of this.enemies) {
-          if (b.mesh.position.distanceTo(e.mesh.position) < 14) {
+          if (segmentDistance(e.mesh.position, prev, b.mesh.position) < 16) {
             dead = true;
             e.hp -= b.dmg * stats.shipDamage;
             this.explode(b.mesh.position, 40);
@@ -508,7 +528,7 @@ export class SpaceMode {
         }
         if (!dead) {
           for (const rock of this.asteroidGroup.children) {
-            if (b.mesh.position.distanceTo(rock.position) < rock.geometry.parameters.radius + 8) {
+            if (segmentDistance(rock.position, prev, b.mesh.position) < rock.geometry.parameters.radius + 8) {
               dead = true;
               rock.userData.hp -= 1.1 * stats.shipDamage;
               this.explode(b.mesh.position, 55);
@@ -561,7 +581,7 @@ export class SpaceMode {
   }
 
   damagePlayer(dmg) {
-    this.damageTimer = 5;
+    this.damageTimer = 3.5;
     this.camShake = 0.9;
     ui.damageFlash();
     if (state.shields > 0) {
@@ -591,7 +611,7 @@ export class SpaceMode {
   regenShields(dt) {
     this.damageTimer = Math.max(0, this.damageTimer - dt);
     if (this.damageTimer <= 0) {
-      state.shields = Math.min(stats.shieldMax, state.shields + dt * 6);
+      state.shields = Math.min(stats.shieldMax, state.shields + dt * 9);
     }
   }
 

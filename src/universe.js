@@ -59,7 +59,7 @@ export const BIOMES = {
   ocean: {
     label: 'Oceanic', ground: ['#3f8f8a', '#2c6b6f', '#5fb0a3'], rock: '#4a6b6b',
     sky: '#63d5ff', fog: '#9fe8f2', night: '#04202b', hazard: 'None',
-    flora: 0.8, fauna: 0.85, amp: 0.55, water: '#12708f', floraStyle: 'tree',
+    flora: 0.8, fauna: 0.85, amp: 0.75, water: '#12708f', floraStyle: 'tree',
   },
   fungal: {
     label: 'Fungal', ground: ['#a8654f', '#7d4436', '#d18a63'], rock: '#5f3b30',
@@ -142,6 +142,24 @@ export function generateGalaxy(seed = 'firebrox', count = 320) {
       distFromCore: radius,
     });
   }
+  // No star may be stranded: pull isolated systems into hyperdrive range of a neighbour.
+  const BASE_RANGE = 200;
+  for (const a of systems) {
+    let nearest = null, nd = Infinity;
+    for (const b of systems) {
+      if (a === b) continue;
+      const d = distance(a.pos, b.pos);
+      if (d < nd) { nd = d; nearest = b; }
+    }
+    if (nearest && nd > BASE_RANGE) {
+      const t = 1 - BASE_RANGE / nd;
+      a.pos.x += (nearest.pos.x - a.pos.x) * t;
+      a.pos.y += (nearest.pos.y - a.pos.y) * t;
+      a.pos.z += (nearest.pos.z - a.pos.z) * t;
+      a.distFromCore = Math.hypot(a.pos.x, a.pos.y, a.pos.z);
+    }
+  }
+
   return { seed, name: GALAXY_NAME, systems };
 }
 
