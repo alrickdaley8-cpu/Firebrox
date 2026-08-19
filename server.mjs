@@ -46,6 +46,23 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`FIREBROX running at http://${HOST}:${PORT}/`);
+// Never let a bad request take the preview down.
+server.on('clientError', (err, socket) => {
+  if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
 });
+process.on('uncaughtException', (err) => {
+  console.error('[firebrox] recovered from:', err.message);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[firebrox] unhandled rejection:', err?.message || err);
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`FIREBROX running at http://${HOST}:${PORT}/  (pid ${process.pid})`);
+});
+
+// heartbeat so the log shows the preview is alive
+setInterval(() => {
+  const mins = Math.round(process.uptime() / 6) / 10;
+  console.log(`[firebrox] alive — uptime ${mins} min`);
+}, 300000).unref?.();
