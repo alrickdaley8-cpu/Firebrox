@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FIREBROX — No Man's Sky</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="crosshair"><span class="ch-dot"></span><span class="ch-ring"></span></div>
+
+  <div class="panel top-left">
+    <div class="label">Galaxy</div>
+    <div class="value" id="hud-galaxy">Euclid-VII</div>
+    <div class="label">System</div>
+    <div class="value" id="hud-system">—</div>
+    <div class="label" id="hud-planet-label">Location</div>
+    <div class="value small" id="hud-planet">Deep Space</div>
+    <div class="sub" id="hud-conditions"></div>
+  </div>
+
+  <div class="panel top-right">
+    <div class="row"><span class="label">Units</span><span class="value mono" id="hud-units">0</span></div>
+    <div class="row"><span class="label">Discoveries</span><span class="value mono" id="hud-disc">0</span></div>
+    <div class="row"><span class="label">Distance</span><span class="value mono" id="hud-ly">0.0 ly</span></div>
+    <div class="row"><span class="label">Mode</span><span class="value mono" id="hud-mode">SPACE</span></div>
+  </div>
+
+  <div class="panel bottom-left" id="bars"></div>
+
+  <div class="panel bottom-right">
+    <div class="panel-title">Exosuit Cargo</div>
+    <div id="inventory" class="inv-grid"></div>
+  </div>
+
+  <div id="target-info" class="hidden">
+    <div id="target-name"></div>
+    <div id="target-sub"></div>
+    <div id="scan-bar"><i></i></div>
+  </div>
+
+  <div id="prompt" class="hidden"></div>
+  <div id="log"></div>
+  <div id="warp-flash"></div>
+</div>
+
+<!-- ============ TITLE ============ -->
+<div id="title" class="overlay">
+  <div class="title-inner">
+    <h1>FIREBROX</h1>
+    <h2>an infinite universe awaits</h2>
+    <p class="blurb">
+      Every star in the sky is a place you can go. Fly between procedurally generated
+      worlds, land on any planet, mine its resources, scan its lifeforms, and warp
+      deeper into the galaxy of <b>Euclid-VII</b>.
+    </p>
+    <div class="btn-row">
+      <button id="btn-new">Begin Journey</button>
+      <button id="btn-continue">Continue</button>
+    </div>
+    <div class="controls-grid">
+      <div><b>Space flight</b><span>W/S throttle · Mouse steer · Shift boost · Space pulse-warp</span></div>
+      <div><b>Land / Launch</b><span>Hold <kbd>E</kbd> near a planet to land, <kbd>E</kbd> at the ship to launch</span></div>
+      <div><b>On foot</b><span>WASD move · Mouse look · Space jump/jetpack · Shift sprint</span></div>
+      <div><b>Tools</b><span>Left-click mine · <kbd>F</kbd> scan pulse · <kbd>M</kbd> galaxy map · <kbd>C</kbd> craft warp cell</span></div>
+    </div>
+    <div class="hint">Click anywhere in the game to capture the mouse. <kbd>Esc</kbd> releases it.</div>
+  </div>
+</div>
+
+<!-- ============ GALAXY MAP ============ -->
+<div id="map" class="overlay hidden">
+  <div class="map-head">
+    <h2>GALACTIC MAP — <span id="map-galaxy">Euclid-VII</span></h2>
+    <div class="map-sub">Click a star to select · <kbd>Enter</kbd> warp · <kbd>M</kbd> close</div>
+  </div>
+  <canvas id="map-canvas"></canvas>
+  <div class="map-info" id="map-info"></div>
+</div>
+
+<!-- ============ PAUSE / CATALOGUE ============ -->
+<div id="pause" class="overlay hidden">
+  <div class="pause-inner">
+    <h2>LOG</h2>
+    <div id="discovery-list"></div>
+    <div class="btn-row">
+      <button id="btn-resume">Resume</button>
+      <button id="btn-save">Save</button>
+      <button id="btn-quit">Abandon Journey</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading" class="overlay hidden"><div class="load-inner"><div class="spinner"></div><div id="load-text">Generating world…</div></div></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
