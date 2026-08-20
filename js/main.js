@@ -104,11 +104,25 @@ const ui = mountUI({
   beginMatrixDrag,
 });
 
-applyPreset('genesis', { silent: true, preserveCount: false });
-restoreFromHash() || restoreSession();
-layout(true);
-ui.openPanel();
-refresh();
+try {
+  applyPreset('genesis', { silent: true, preserveCount: false });
+  restoreFromHash() || restoreSession();
+  if (sim.n < 50) sim.setCount(4000);
+  layout(true);
+  sim.respawn();
+  ui.openPanel();
+  refresh();
+} catch (err) {
+  console.error('FIREBROX boot failed', err);
+  try {
+    sim.setCount(4000);
+    applyPalette('spectrum');
+    layout(true);
+    sim.respawn();
+  } catch {
+    /* ignore */
+  }
+}
 
 window.addEventListener('resize', () => layout());
 window.visualViewport?.addEventListener('resize', () => layout());
@@ -162,6 +176,8 @@ let frames = 0;
 let fpsT = last;
 
 function frame(now) {
+  if (renderer.cssW < 32 || renderer.cssH < 32 || canvas.width < 32) layout(true);
+  if (sim.n < 50) sim.setCount(4000);
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
   if (state.running) {
@@ -306,25 +322,38 @@ function applyPalette(id) {
   renderer.setPalette(colors);
 }
 
+let booted = false;
+
 function viewport() {
+  const cw = canvas.clientWidth || 0;
+  const ch = canvas.clientHeight || 0;
   const w = Math.max(
-    1,
-    Math.floor(window.innerWidth || document.documentElement.clientWidth || 1),
+    cw,
+    window.innerWidth || 0,
+    document.documentElement.clientWidth || 0,
+    0,
   );
   const h = Math.max(
-    1,
-    Math.floor(window.innerHeight || document.documentElement.clientHeight || 1),
+    ch,
+    window.innerHeight || 0,
+    document.documentElement.clientHeight || 0,
+    0,
   );
-  return { w, h };
+  if (w < 32 || h < 32) return { w: 960, h: 600, fake: true };
+  return { w: Math.floor(w), h: Math.floor(h), fake: false };
 }
 
 function layout(force) {
-  const { w, h } = viewport();
-  if (w < 2 || h < 2) return;
+  const { w, h, fake } = viewport();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   if (!force && w === renderer.cssW && h === renderer.cssH && dpr === renderer.dpr) return;
+  const wasTiny = sim.width < 32 || sim.height < 32;
   sim.resize(w, h);
   renderer.resize(w, h);
+  if (!fake && (!booted || wasTiny)) {
+    booted = true;
+    sim.respawn();
+  }
 }
 
 function mouseToWorld(e) {
