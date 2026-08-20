@@ -472,19 +472,16 @@ function broth(s) {
 }
 
 function pick(n, swatches) {
-  if (n <= swatches.length) {
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0 : i / (n - 1);
-      const idx = t * (swatches.length - 1);
-      const a = Math.floor(idx);
-      const b = Math.min(swatches.length - 1, a + 1);
-      const f = idx - a;
-      out.push(mix(swatches[a], swatches[b], f));
-    }
-    return out;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    const idx = t * (swatches.length - 1);
+    const a = Math.floor(idx);
+    const b = Math.min(swatches.length - 1, a + 1);
+    const f = idx - a;
+    out.push(mix(swatches[a], swatches[b], f));
   }
-  return Array.from({ length: n }, (_, i) => swatches[i % swatches.length]);
+  return out;
 }
 
 function mix(a, b, t) {

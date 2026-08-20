@@ -15,6 +15,10 @@ export function mountUI(app) {
     ...PRESETS.map((p) => ({ value: p.id, label: p.name })),
     { value: 'custom', label: 'Custom' },
   ]);
+  fillSelect($('presetPanel'), [
+    ...PRESETS.map((p) => ({ value: p.id, label: p.name })),
+    { value: 'custom', label: 'Custom' },
+  ]);
   fillSelect(
     $('palette'),
     Object.entries(PALETTES).map(([id, p]) => ({ value: id, label: p.name })),
@@ -40,33 +44,34 @@ export function mountUI(app) {
   bindSlider('time', (v) => app.setTime(v));
   bindSlider('size', (v) => app.setSize(v));
 
-  $('wrap').addEventListener('change', (e) => app.setWrap(e.target.checked));
-  $('preset').addEventListener('change', (e) => {
+  on($('wrap'), 'change', (e) => app.setWrap(e.target.checked));
+  const onPreset = (e) => {
     if (e.target.value === 'custom') return;
     app.applyPreset(e.target.value);
-  });
-  $('palette').addEventListener('change', (e) => app.setPalette(e.target.value));
-  $('randMode').addEventListener('change', (e) => app.setRandMode(e.target.value));
-  $('mouseMode').addEventListener('change', (e) => app.setMouseMode(e.target.value));
+  };
+  on($('preset'), 'change', onPreset);
+  on($('presetPanel'), 'change', onPreset);
+  on($('palette'), 'change', (e) => app.setPalette(e.target.value));
+  on($('randMode'), 'change', (e) => app.setRandMode(e.target.value));
+  on($('mouseMode'), 'change', (e) => app.setMouseMode(e.target.value));
 
-  $('randomize').addEventListener('click', () => app.randomize());
-  $('mutate').addEventListener('click', () => app.mutate());
-  $('symmetrize').addEventListener('click', () => app.symmetrize());
-  $('respawn').addEventListener('click', () => app.respawn());
-  $('play').addEventListener('click', () => app.togglePlay());
-  $('snapshot').addEventListener('click', () => app.snapshot());
-  $('copyLaws').addEventListener('click', () => app.copyLaws());
-  $('panelToggle').addEventListener('click', () => togglePanel());
-  $('helpBtn').addEventListener('click', () => toggleHelp(true));
-  $('helpClose').addEventListener('click', () => toggleHelp(false));
-  $('helpModal').addEventListener('click', (e) => {
+  on($('randomize'), 'click', () => app.randomize());
+  on($('mutate'), 'click', () => app.mutate());
+  on($('symmetrize'), 'click', () => app.symmetrize());
+  on($('respawn'), 'click', () => app.respawn());
+  on($('play'), 'click', () => app.togglePlay());
+  on($('snapshot'), 'click', () => app.snapshot());
+  on($('copyLaws'), 'click', () => app.copyLaws());
+  on($('panelToggle'), 'click', () => togglePanel());
+  on($('helpBtn'), 'click', () => toggleHelp(true));
+  on($('helpClose'), 'click', () => toggleHelp(false));
+  on($('helpModal'), 'click', (e) => {
     if (e.target.id === 'helpModal') toggleHelp(false);
   });
-  $('fullscreen').addEventListener('click', () => app.fullscreen());
-  const intro = $('intro');
-  if (intro) intro.addEventListener('click', () => dismissIntro());
+  on($('fullscreen'), 'click', () => app.fullscreen());
+  on($('intro'), 'click', () => dismissIntro());
 
-  $('matrix').addEventListener('pointerdown', (e) => {
+  on($('matrix'), 'pointerdown', (e) => {
     const cell = e.target.closest('.m-cell');
     if (!cell) return;
     e.preventDefault();
@@ -74,7 +79,7 @@ export function mountUI(app) {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input, textarea, select')) return;
+    if (e.target.closest('input, textarea, select, button')) return;
     const k = e.key.toLowerCase();
     if (k === ' ') {
       e.preventDefault();
@@ -85,8 +90,10 @@ export function mountUI(app) {
     else if (k === 'h') togglePanel();
     else if (k === 'f') app.fullscreen();
     else if (k === 's') app.snapshot();
-    else if (k === '?' || k === '/') toggleHelp();
-    else if (k === 'escape') toggleHelp(false);
+    else if (k === '?' || k === '/') {
+      e.preventDefault();
+      toggleHelp();
+    } else if (k === 'escape') toggleHelp(false);
     else if (k >= '1' && k <= '9') {
       const preset = PRESETS[Number(k) - 1];
       if (preset) app.applyPreset(preset.id);
@@ -106,25 +113,35 @@ export function mountUI(app) {
       setSlider('temp', state.temp, state.temp.toFixed(0));
       setSlider('time', state.timeScale, `${state.timeScale.toFixed(2)}×`);
       setSlider('size', state.size, state.size.toFixed(1));
-      $('wrap').checked = state.wrap;
-      $('preset').value = state.presetId;
-      $('palette').value = state.palette;
-      $('randMode').value = state.randMode;
-      $('mouseMode').value = state.mouseMode;
-      $('play').classList.toggle('paused', !state.running);
-      $('play').setAttribute('aria-label', state.running ? 'Pause' : 'Play');
-      $('live').classList.toggle('off', !state.running);
-      $('hudSeed').textContent = state.seed;
-      $('presetBlurb').textContent = state.blurb;
+      const wrap = $('wrap');
+      if (wrap) wrap.checked = state.wrap;
+      setVal('preset', state.presetId);
+      setVal('presetPanel', state.presetId);
+      setVal('palette', state.palette);
+      setVal('randMode', state.randMode);
+      setVal('mouseMode', state.mouseMode);
+      const play = $('play');
+      if (play) {
+        play.classList.toggle('paused', !state.running);
+        play.setAttribute('aria-label', state.running ? 'Pause' : 'Play');
+      }
+      $('live')?.classList.toggle('off', !state.running);
+      const seed = $('hudSeed');
+      if (seed) seed.textContent = state.seed;
+      const blurb = $('presetBlurb');
+      if (blurb) blurb.textContent = state.blurb;
       renderMatrix(state);
       renderLegend(state, app);
     },
     tick(fps, count) {
-      $('fps').textContent = String(Math.round(fps));
-      $('hudCount').textContent = formatCount(count);
+      const fpsEl = $('fps');
+      if (fpsEl) fpsEl.textContent = String(Math.round(fps));
+      const countEl = $('hudCount');
+      if (countEl) countEl.textContent = formatCount(count);
     },
     flash(text) {
       const el = $('toast');
+      if (!el) return;
       el.textContent = text;
       el.classList.add('show');
       clearTimeout(el._t);
@@ -137,6 +154,16 @@ export function mountUI(app) {
 }
 
 export { PRESETS, PALETTES, RAND_MODES, randomizeMatrix, mutateMatrix, symmetrizeMatrix, hashMatrix, mulberry32 };
+
+function on(el, ev, fn) {
+  if (!el) return;
+  el.addEventListener(ev, fn);
+}
+
+function setVal(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = value;
+}
 
 function bindSlider(id, fn) {
   const el = document.getElementById(id);
@@ -154,7 +181,11 @@ function setSlider(id, value, label) {
 
 function fillSelect(el, items) {
   if (!el) return;
-  el.innerHTML = items.map((it) => `<option value="${it.value}">${it.label}</option>`).join('');
+  el.innerHTML = items.map((it) => `<option value="${it.value}">${escapeHtml(it.label)}</option>`).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function formatCount(n) {
@@ -163,22 +194,41 @@ function formatCount(n) {
 
 function renderMatrix(state) {
   const root = document.getElementById('matrix');
+  if (!root) return;
   const s = state.species;
-  const colors = state.colors;
-  const matrix = state.matrix;
+  const colors = state.colors || [];
+  const matrix = state.matrix || [];
+  const key = `${s}`;
+  const expected = (s + 1) * (s + 1);
+  if (root.dataset.s === key && root.childElementCount === expected) {
+    const cells = root.querySelectorAll('.m-cell');
+    for (const cell of cells) {
+      const i = Number(cell.dataset.i);
+      const j = Number(cell.dataset.j);
+      const v = matrix[i] ? matrix[i][j] : 0;
+      cell.style.background = cellColor(v);
+      const span = cell.querySelector('span');
+      if (span) span.textContent = fmt(v);
+      cell.title = labelPair(i, j, v);
+    }
+    return;
+  }
+  root.dataset.s = key;
   root.style.setProperty('--n', String(s + 1));
   const parts = ['<div class="m-corner"></div>'];
   for (let j = 0; j < s; j++) {
+    const c = colors[j] || [180, 180, 180];
     parts.push(
-      `<div class="m-axis" title="from species ${j + 1}" style="background:rgb(${colors[j]})">${j + 1}</div>`,
+      `<div class="m-axis" title="from species ${j + 1}" style="background:rgb(${c})">${j + 1}</div>`,
     );
   }
   for (let i = 0; i < s; i++) {
+    const c = colors[i] || [180, 180, 180];
     parts.push(
-      `<div class="m-axis" title="species ${i + 1} feels" style="background:rgb(${colors[i]})">${i + 1}</div>`,
+      `<div class="m-axis" title="species ${i + 1} feels" style="background:rgb(${c})">${i + 1}</div>`,
     );
     for (let j = 0; j < s; j++) {
-      const v = matrix[i][j];
+      const v = matrix[i] ? matrix[i][j] : 0;
       const col = cellColor(v);
       parts.push(
         `<button type="button" class="m-cell" data-i="${i}" data-j="${j}" style="background:${col}" title="${labelPair(i, j, v)}"><span>${fmt(v)}</span></button>`,
@@ -187,22 +237,25 @@ function renderMatrix(state) {
   }
   root.innerHTML = parts.join('');
   const hint = document.getElementById('matrixHint');
-  hint.textContent = 'Row feels column. Drag a cell vertically to rewrite the law.';
+  if (hint) hint.textContent = 'Row feels column. Drag a cell vertically to rewrite the law.';
 }
 
 function renderLegend(state, app) {
   const root = document.getElementById('legend');
+  if (!root) return;
   const s = state.species;
   const n = state.count;
-  const colors = state.colors;
+  const colors = state.colors || [];
   const parts = [];
   for (let i = 0; i < s; i++) {
     const active = state.focus === i ? ' active' : '';
+    const share = Math.floor(n / s) + (i < n % s ? 1 : 0);
+    const c = colors[i] || [180, 180, 180];
     parts.push(
       `<button type="button" class="legend-item${active}" data-i="${i}">
-        <i style="background:rgb(${colors[i]})"></i>
+        <i style="background:rgb(${c})"></i>
         <span>S${i + 1}</span>
-        <em>${Math.ceil(n / s)}</em>
+        <em>${share}</em>
       </button>`,
     );
   }
@@ -246,11 +299,13 @@ function togglePanel() {
 
 function toggleHelp(force) {
   const el = document.getElementById('helpModal');
+  if (!el) return;
   const open = force === undefined ? !el.classList.contains('open') : force;
   el.classList.toggle('open', open);
   el.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
 function dismissIntro() {
-  document.getElementById('intro').classList.add('gone');
+  const el = document.getElementById('intro');
+  if (el) el.classList.add('gone');
 }

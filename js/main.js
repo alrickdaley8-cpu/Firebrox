@@ -32,6 +32,7 @@ const state = {
 const ui = mountUI({
   setSpecies: (v) => {
     sim.setSpecies(v);
+    if (state.focus >= sim.species) state.focus = -1;
     applyPalette(state.palette);
     state.presetId = 'custom';
     refresh();
@@ -96,8 +97,8 @@ const ui = mountUI({
   copyLaws,
   fullscreen,
   setFocus: (i) => {
-    state.focus = i;
-    renderer.focus = i;
+    state.focus = i >= sim.species ? -1 : i;
+    renderer.focus = state.focus;
     refresh();
   },
   beginMatrixDrag,
@@ -105,11 +106,12 @@ const ui = mountUI({
 
 applyPreset('genesis', { silent: true, preserveCount: false });
 restoreFromHash() || restoreSession();
-layout();
+layout(true);
 ui.openPanel();
 refresh();
 
-window.addEventListener('resize', layout);
+window.addEventListener('resize', () => layout());
+window.visualViewport?.addEventListener('resize', () => layout());
 if (typeof ResizeObserver !== 'undefined') {
   const ro = new ResizeObserver(() => layout());
   ro.observe(document.documentElement);
@@ -117,15 +119,20 @@ if (typeof ResizeObserver !== 'undefined') {
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
-  canvas.setPointerCapture(e.pointerId);
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch {
+    /* ignore */
+  }
   updateMouse(e, true);
   if (state.mouseMode === 'spawn') sim.spawnAt(sim.mouse.x, sim.mouse.y, 14);
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (sim.mouse.active || e.buttons) updateMouse(e, sim.mouse.active || e.buttons === 1);
+  if (sim.mouse.active || e.buttons === 1) updateMouse(e, sim.mouse.active || e.buttons === 1);
   else {
-    sim.mouse.x = e.clientX;
-    sim.mouse.y = e.clientY;
+    const p = mouseToWorld(e);
+    sim.mouse.x = p.x;
+    sim.mouse.y = p.y;
   }
 });
 canvas.addEventListener('pointerup', (e) => {
@@ -136,10 +143,17 @@ canvas.addEventListener('pointerup', (e) => {
     /* ignore */
   }
 });
-canvas.addEventListener('pointerleave', () => {
+canvas.addEventListener('pointercancel', () => {
   sim.mouse.active = false;
 });
+canvas.addEventListener('pointerleave', () => {
+  if (!sim.mouse.active) return;
+});
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('visibilitychange', () => {
+  last = performance.now();
+  acc = 0;
+});
 
 let last = performance.now();
 let acc = 0;
@@ -148,7 +162,7 @@ let frames = 0;
 let fpsT = last;
 
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
   if (state.running) {
     acc += dt * state.timeScale;
@@ -159,6 +173,7 @@ function frame(now) {
       acc -= step;
       guard++;
     }
+    if (acc > step * 3) acc = 0;
   }
   renderer.size = state.size;
   renderer.focus = state.focus;
@@ -181,6 +196,7 @@ function applyPreset(id, opts = {}) {
   const preset = PRESETS.find((p) => p.id === id) || PRESETS[0];
   state.presetId = preset.id;
   state.blurb = preset.blurb;
+  state.focus = -1;
   sim.setSpecies(preset.species);
   if (!opts.preserveCount) sim.setCount(preset.count);
   sim.rMax = preset.rMax;
@@ -243,8 +259,13 @@ function togglePlay() {
 }
 
 function snapshot() {
+  const href = renderer.capture();
+  if (!href) {
+    ui.flash('SNAPSHOT FAILED');
+    return;
+  }
   const a = document.createElement('a');
-  a.href = renderer.capture();
+  a.href = href;
   a.download = `firebrox-${state.seed}-${Date.now()}.png`;
   a.click();
   ui.flash('FRAME SAVED');
@@ -252,19 +273,31 @@ function snapshot() {
 
 async function copyLaws() {
   const payload = serialize();
-  const url = `${location.origin}${location.pathname}#${btoa(JSON.stringify(payload))}`;
+  const encoded = encodeURIComponent(btoa(JSON.stringify(payload)));
+  const url = `${location.origin}${location.pathname}#${encoded}`;
   try {
     await navigator.clipboard.writeText(url);
     ui.flash('LINK COPIED');
   } catch {
     ui.flash('COPY FAILED');
   }
-  history.replaceState(null, '', `#${btoa(JSON.stringify(payload))}`);
+  try {
+    history.replaceState(null, '', `#${encoded}`);
+  } catch {
+    /* ignore */
+  }
 }
 
 function fullscreen() {
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-  else document.exitFullscreen?.();
+  const root = document.documentElement;
+  const req = root.requestFullscreen || root.webkitRequestFullscreen;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  try {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) req?.call(root);
+    else exit?.call(document);
+  } catch {
+    ui.flash('FULLSCREEN BLOCKED');
+  }
 }
 
 function applyPalette(id) {
@@ -274,47 +307,94 @@ function applyPalette(id) {
 }
 
 function viewport() {
-  const w = Math.max(1, Math.floor(window.innerWidth || document.documentElement.clientWidth || 1));
-  const h = Math.max(1, Math.floor(window.innerHeight || document.documentElement.clientHeight || 1));
+  const w = Math.max(
+    1,
+    Math.floor(window.innerWidth || document.documentElement.clientWidth || 1),
+  );
+  const h = Math.max(
+    1,
+    Math.floor(window.innerHeight || document.documentElement.clientHeight || 1),
+  );
   return { w, h };
 }
 
-function layout() {
+function layout(force) {
   const { w, h } = viewport();
   if (w < 2 || h < 2) return;
-  if (w === renderer.cssW && h === renderer.cssH) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (!force && w === renderer.cssW && h === renderer.cssH && dpr === renderer.dpr) return;
   sim.resize(w, h);
   renderer.resize(w, h);
 }
 
+function mouseToWorld(e) {
+  const rect = canvas.getBoundingClientRect();
+  const rw = rect.width || 1;
+  const rh = rect.height || 1;
+  return {
+    x: ((e.clientX - rect.left) / rw) * sim.width,
+    y: ((e.clientY - rect.top) / rh) * sim.height,
+  };
+}
+
 function updateMouse(e, active) {
+  const p = mouseToWorld(e);
   sim.mouse.active = active && state.mouseMode !== 'off';
   sim.mouse.mode = state.mouseMode;
-  sim.mouse.x = e.clientX;
-  sim.mouse.y = e.clientY;
+  sim.mouse.x = p.x;
+  sim.mouse.y = p.y;
 }
 
 function beginMatrixDrag(cell, e) {
   const i = Number(cell.dataset.i);
   const j = Number(cell.dataset.j);
+  if (!Number.isFinite(i) || !Number.isFinite(j)) return;
   const startY = e.clientY;
   const startV = sim.matrixAt(i, j);
+  try {
+    cell.setPointerCapture(e.pointerId);
+  } catch {
+    /* ignore */
+  }
+  const paint = (value) => {
+    sim.setMatrixAt(i, j, value);
+    cell.style.background = cellColor(value);
+    const label = cell.querySelector('span');
+    if (label) label.textContent = fmt(value);
+    cell.title = `S${i + 1} ← S${j + 1}  ${fmt(value)}`;
+  };
   const onMove = (ev) => {
-    const next = clamp(startV + (startY - ev.clientY) / 72, -1, 1);
-    sim.setMatrixAt(i, j, next);
-    state.presetId = 'custom';
-    state.seed = hashMatrix(sim.getMatrix());
-    refresh();
+    paint(clamp(startV + (startY - ev.clientY) / 72, -1, 1));
   };
   const onUp = () => {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    state.presetId = 'custom';
+    state.seed = hashMatrix(sim.getMatrix());
+    refresh();
   };
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+function cellColor(v) {
+  if (v >= 0) {
+    const t = v;
+    return `rgb(${(18 + (32 - 18) * t) | 0}, ${(22 + (255 - 22) * t) | 0}, ${(28 + (176 - 28) * t) | 0})`;
+  }
+  const t = -v;
+  return `rgb(${(18 + (255 - 18) * t) | 0}, ${(22 + (48 - 22) * t) | 0}, ${(28 + (90 - 28) * t) | 0})`;
+}
+
+function fmt(v) {
+  const x = Math.abs(v) < 0.005 ? 0 : v;
+  return (x >= 0 ? '+' : '') + x.toFixed(2);
 }
 
 function snapshotState() {
+  if (state.focus >= sim.species) state.focus = -1;
   return {
     species: sim.species,
     count: sim.n,
@@ -362,11 +442,11 @@ function serialize() {
 }
 
 function applySerialized(data) {
-  if (!data || !data.m) return false;
+  if (!data || !Array.isArray(data.m)) return false;
   sim.setSpecies(data.s || 4);
   sim.setCount(data.n || 4000);
-  sim.rMax = data.r ?? 86;
-  sim.force = data.f ?? 280;
+  sim.rMax = data.r ?? 80;
+  sim.force = data.f ?? 320;
   sim.damp = data.d ?? 4.2;
   sim.beta = data.b ?? 0.3;
   sim.temp = data.t ?? 0;
@@ -377,11 +457,16 @@ function applySerialized(data) {
   applyPalette(data.p || 'spectrum');
   const s = sim.species;
   const matrix = [];
-  for (let i = 0; i < s; i++) matrix.push(data.m.slice(i * s, (i + 1) * s));
+  for (let i = 0; i < s; i++) {
+    const row = data.m.slice(i * s, (i + 1) * s);
+    while (row.length < s) row.push(0);
+    matrix.push(row);
+  }
   sim.setMatrix(matrix);
   state.presetId = 'custom';
   state.seed = data.seed || hashMatrix(sim.getMatrix());
   state.blurb = 'Restored universe.';
+  state.focus = -1;
   refresh();
   return true;
 }
@@ -389,10 +474,15 @@ function applySerialized(data) {
 function restoreFromHash() {
   if (!location.hash || location.hash.length < 8) return false;
   try {
-    const data = JSON.parse(atob(location.hash.slice(1)));
+    const raw = decodeURIComponent(location.hash.slice(1));
+    const data = JSON.parse(atob(raw));
     return applySerialized(data);
   } catch {
-    return false;
+    try {
+      return applySerialized(JSON.parse(atob(location.hash.slice(1))));
+    } catch {
+      return false;
+    }
   }
 }
 
