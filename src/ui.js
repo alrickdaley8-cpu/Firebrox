@@ -345,6 +345,17 @@ export const ui = {
 
   showHUD(v) { $('hud').classList.toggle('hidden', !v); },
 
+  inputMode(mode, blocked) {
+    const el = $('input-mode');
+    if (!el) return;
+    if (mode === 'locked') { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.textContent = mode === 'freelook'
+      ? (blocked ? 'FREE-LOOK (mouse capture blocked here)' : 'FREE-LOOK')
+      : 'CLICK TO PLAY';
+    el.classList.toggle('warn', mode === 'idle');
+  },
+
   hudInfoExtras(info) {
     if (!info) return;
     if (this.last.exoMode !== info.exocraft) {

@@ -58,7 +58,13 @@ window.HTMLCanvasElement.prototype.getContext = function (kind) {
   this.__gl = this.__gl || fakeGL();
   return this.__gl;
 };
-window.HTMLCanvasElement.prototype.requestPointerLock = function () {};
+// Simulate a preview iframe WITHOUT allow="pointer-lock": the request always fails.
+window.HTMLCanvasElement.prototype.requestPointerLock = function () {
+  setTimeout(() => {
+    const ev = new window.Event('pointerlockerror');
+    window.document.dispatchEvent(ev);
+  }, 0);
+};
 Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', { get() { return 620; }, configurable: true });
 Object.defineProperty(window.HTMLElement.prototype, 'clientHeight', { get() { return 150; }, configurable: true });
 window.HTMLElement.prototype.getBoundingClientRect = function () {
@@ -72,6 +78,7 @@ Object.defineProperty(globalThis, 'navigator', { value: window.navigator, config
 globalThis.HTMLElement = window.HTMLElement;
 globalThis.HTMLCanvasElement = window.HTMLCanvasElement;
 globalThis.Image = window.Image;
+window.focus = () => {};
 globalThis.devicePixelRatio = 1;
 globalThis.innerWidth = 1280;
 globalThis.innerHeight = 720;
@@ -140,7 +147,6 @@ key('KeyH'); frames(2);
 
 // cockpit view through the real key handler
 const { input } = await import(ROOT + '/src/input.js');
-input.locked = true;
 key('KeyT'); frames(4);
 console.log('cockpit view in space:', G.game.space.cockpitView);
 key('KeyT'); frames(4);
@@ -227,8 +233,43 @@ const hold = (code, n = 20) => { input.keys.add(code); frames(n); input.keys.del
 
 // --- make sure we start in space, unblocked, pointer locked
 if (G.game.mode !== 'space') { S().exitRequest = { lat: 0.1, lon: 0.1 }; frames(6); }
-input.locked = true;
+// engage the way a player does: click the canvas
+document.getElementById('scene').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+document.getElementById('scene').dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 0 }));
+window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, button: 0 }));
+await new Promise((r) => setTimeout(r, 400));
 frames(10);
+console.log(`input mode: ${input.mode()} · pointer lock blocked: ${input.pointerLockBlocked} · enabled: ${input.enabled}`);
+chk('input: game is playable without pointer lock', input.active && input.enabled);
+{
+  // free-look must steer from ordinary mousemove events (no pointer lock involved)
+  const q0 = G.game.space.ship.quaternion.clone();
+  for (let i = 0; i < 12; i++) {
+    const ev = new window.MouseEvent('mousemove');
+    Object.defineProperty(ev, 'movementX', { value: 14 });
+    Object.defineProperty(ev, 'movementY', { value: 5 });
+    document.dispatchEvent(ev);
+    frames(1);
+  }
+  chk('input: free-look mouse steers the ship', G.game.space.ship.quaternion.angleTo(q0) > 0.005,
+    `${G.game.space.ship.quaternion.angleTo(q0).toFixed(3)} rad`);
+}
+{
+  // arrow keys are the keyboard fallback for looking
+  const q0 = G.game.space.ship.quaternion.clone();
+  hold('ArrowLeft', 20);
+  chk('input: arrow keys look around', G.game.space.ship.quaternion.angleTo(q0) > 0.005);
+}
+{
+  // buttons must register without pointer lock
+  const scene = document.getElementById('scene');
+  scene.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 2 }));
+  frames(2);
+  const gotRight = input.mouseRight === true;
+  window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, button: 2 }));
+  frames(2);
+  chk('input: right mouse registers without pointer lock', gotRight && input.mouseRight === false);
+}
 
 // SPACE MODE
 {
@@ -273,7 +314,7 @@ frames(10);
   chk('map: G switches to the intergalactic view', G.game.map.view === 'intergalactic');
   key('KeyG'); frames(3);
   key('Escape'); frames(3);
-  chk('map: Esc closes it and recaptures the mouse', !G.game.map.open && input.locked);
+  chk('map: Esc closes it and restores control', !G.game.map.open && input.active);
 
   key('KeyC'); frames(3);
   chk('any: C opens the refiner', !document.getElementById('craft').classList.contains('hidden'));

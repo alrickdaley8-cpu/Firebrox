@@ -22,6 +22,28 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
                              # drives thousands of frames, asserts zero errors
 ```
 
+## Input: works with or without pointer lock
+
+The preview runs inside a cross-origin iframe, and browsers refuse `requestPointerLock()`
+there unless the frame carries `allow="pointer-lock"`. The input layer used to gate
+**every key and mouse button** behind `input.locked`, so in that environment the game
+rendered perfectly and ignored you completely.
+
+Input now has two modes and picks automatically:
+
+* **locked** — real pointer lock where it is permitted (cursor hidden, unlimited travel).
+* **free-look** — the fallback: mouse look is read from ordinary `mousemove` deltas, the
+  cursor is hidden over the canvas, and every button and key still works.
+
+Keyboard is never gated behind pointer lock any more, mouse buttons register in both modes,
+**arrow keys work as a look stick**, the canvas takes focus on click so an iframed game
+receives key events, and a HUD pill tells you which mode you are in. A failed *programmatic*
+lock (e.g. closing a menu) no longer condemns you to free-look — only a refused user gesture
+does, so desktop players keep true pointer lock.
+
+The boot test now simulates an iframe that refuses pointer lock and verifies all 57
+controls under exactly those conditions.
+
 ## Controls audit & bug-fix pass
 
 Every binding now comes from one source of truth (`src/controls.js`), which renders the

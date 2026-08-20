@@ -360,3 +360,12 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-fa
 .ctrl-keys kbd { font-size: 9px; padding: 1px 5px; color: var(--accent); border-color: rgba(255,159,67,0.4); }
 .ctrl-label { color: rgba(200, 228, 245, 0.78); line-height: 1.4; }
 .title-controls { max-height: 34vh; margin-bottom: 8px; }
+
+/* input mode indicator */
+#input-mode {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  border: 1px solid rgba(120, 220, 255, 0.35); background: rgba(6, 14, 22, 0.7);
+  padding: 5px 14px; border-radius: 3px; font-size: 10px; letter-spacing: 0.22em;
+  color: rgba(200, 230, 245, 0.85); backdrop-filter: blur(5px);
+}
+#input-mode.warn { border-color: rgba(255, 159, 67, 0.6); color: var(--accent); }

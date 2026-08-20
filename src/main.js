@@ -134,7 +134,7 @@ function warpTo(systemId) {
     ui.loading(null);
     ui.warpFlash(1100);
     ui.log(`WARP COMPLETE — ${game.system.name}`, 'good');
-    input.lock();
+    input.engage();
   }, 480);
 }
 
@@ -186,7 +186,7 @@ function launchToSpace() {
     ui.mode = 'space';
     ui.loading(null);
     ui.log('LAUNCHED — welcome back to the void', 'good');
-    input.lock();
+    input.engage();
   }, 460);
 }
 
@@ -211,7 +211,7 @@ function dockAtStation() {
       game.space.ship.lookAt(st.position.clone().addScaledVector(away, 4000));
       game.space.camPos.copy(game.space.ship.position);
     }
-    input.lock();
+    input.engage();
   });
 }
 
@@ -234,7 +234,7 @@ function wormholeTravel() {
     enterSystem(target.id);
     ui.loading(null);
     ui.log(`WORMHOLE TRANSIT — ${d.toFixed(0)} ly to ${target.name}`, 'good');
-    input.lock();
+    input.engage();
   }, 700);
 }
 
@@ -256,7 +256,7 @@ function portalTravel(req) {
     ui.loading(null);
     ui.log(`PORTAL TRANSIT — ${planet.name} in ${sys.name}`, 'good');
     ui.log('Your ship was summoned to the portal site', '');
-    input.lock();
+    input.engage();
   }, 900);
 }
 
@@ -283,7 +283,7 @@ function jumpToGalaxy(index, reason = 'core') {
     ui.loading(null);
     ui.log(`GALAXY ${idx + 1}/${GALAXIES.length} — ${def.name} · ${def.type} · hostility ${def.traits.hostility.toFixed(2)}×`, 'good');
     if (reason === 'core') ui.log('Core breach bonus: +250,000 units, +1500 nanites', 'good');
-    input.lock();
+    input.engage();
   }, 1400);
 }
 
@@ -315,7 +315,7 @@ function dockAtAnomaly() {
       game.space.ship.position.copy(an.position).addScaledVector(away, 950);
       game.space.camPos.copy(game.space.ship.position);
     }
-    input.lock();
+    input.engage();
   });
 }
 
@@ -337,34 +337,34 @@ function blackHoleJump() {
     enterSystem(target.id);
     ui.loading(null);
     ui.log(`SINGULARITY TRANSIT — ${d.toFixed(0)} ly toward the core. Hull scarred.`, 'warn');
-    input.lock();
+    input.engage();
   }, 900);
 }
 
 function openCrafting() {
   game.crafting = true;
   input.unlock();
-  ui.openCraft(() => { game.crafting = false; input.lock(); });
+  ui.openCraft(() => { game.crafting = false; input.engage(); });
 }
 
 function toggleControls() {
   game.controlsOpen = !game.controlsOpen;
   const el = document.getElementById('controls-overlay');
   el.classList.toggle('hidden', !game.controlsOpen);
-  if (game.controlsOpen) { input.unlock(); } else if (!game.paused) input.lock();
+  if (game.controlsOpen) { input.unlock(); } else if (!game.paused) input.engage();
 }
 
 function openSettings() {
   game.settingsOpen = true;
   input.unlock();
-  ui.openSettings(() => { game.settingsOpen = false; if (!game.paused) input.lock(); });
+  ui.openSettings(() => { game.settingsOpen = false; if (!game.paused) input.engage(); });
 }
 
 function setPaused(v) {
   game.paused = v;
   document.getElementById('pause').classList.toggle('hidden', !v);
   if (v) { ui.renderDiscoveries(); input.unlock(); }
-  else input.lock();
+  else input.engage();
 }
 
 function startGame(continueSave) {
@@ -381,7 +381,7 @@ function startGame(continueSave) {
     game.running = true;
     ui.log(`ARRIVED — ${game.system.name}`, 'good');
     ui.log('Hold E near a planet to land · F to scan · M for the galaxy map', '');
-    input.lock();
+    input.engage();
   }, 80);
 }
 
@@ -399,8 +399,21 @@ document.getElementById('btn-continue').disabled = !hasSave();
 
 canvas.addEventListener('click', () => {
   audio.resume();
-  if (game.running && !game.paused && !game.map.open && !game.docked) input.lock();
+  const blockedNow = game.paused || game.map.open || game.docked || game.crafting
+    || game.settingsOpen || game.atAnomaly || game.talking || game.teleporting
+    || game.seeding || game.controlsOpen;
+  if (game.running && !blockedNow) input.engage();
 });
+
+// tell the player which input mode they are in, and why
+input.onModeChange = (mode) => {
+  ui.inputMode(mode, input.pointerLockBlocked);
+  if (mode === 'freelook' && !game.warnedFreeLook) {
+    game.warnedFreeLook = true;
+    ui.log('MOUSE CAPTURE UNAVAILABLE HERE — free-look enabled: move the mouse over the game to look around', 'warn');
+    ui.log('Arrow keys also work for looking. Everything else is unchanged.', '');
+  }
+};
 
 addEventListener('keydown', (e) => {
   if (!game.running) return;
@@ -430,7 +443,7 @@ addEventListener('keydown', (e) => {
   switch (e.code) {
     case 'KeyM':
       if (game.mode !== 'space') { ui.log('Galaxy map is only available in flight', 'warn'); break; }
-      if (game.map.open) { game.map.hide(); input.lock(); }
+      if (game.map.open) { game.map.hide(); input.engage(); }
       else { input.unlock(); game.map.show(state.systemId); }
       break;
     case 'KeyG':
@@ -473,7 +486,7 @@ addEventListener('keydown', (e) => {
       break;
     case 'Tab': e.preventDefault(); setPaused(!game.paused); break;
     case 'Escape':
-      if (game.map.open) { game.map.hide(); input.lock(); }
+      if (game.map.open) { game.map.hide(); input.engage(); }
       break;
     case 'F1':
     case 'Slash':
@@ -525,7 +538,7 @@ function loop() {
   const blocked = game.paused || game.map.open || game.docked || game.crafting
     || game.settingsOpen || game.atAnomaly || game.talking || game.teleporting
     || game.seeding || game.controlsOpen;
-  input.enabled = !blocked && input.locked;
+  input.enabled = !blocked && input.active;
 
   if (!blocked) {
     state.playTime += dt;
@@ -579,7 +592,7 @@ function loop() {
     ui.prompt(blocked && !game.paused && !game.map.open && !game.docked ? 'Click to resume — mouse released' : '');
   }
 
-  if (!input.locked && !blocked) ui.prompt('Click to capture mouse');
+  if (!input.active && !blocked) ui.prompt('Click the game to start playing');
 
   game.map.tick(dt);
   const info = active.info?.();
