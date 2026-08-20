@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#07070b" />
+    <meta
+      name="description"
+      content="FIREBROX — a particle life laboratory. Simple laws of attraction and repulsion bloom into cells, serpents, and galaxies."
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>FIREBROX — Particle Life Lab</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <canvas id="stage" aria-label="Particle life simulation"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <div id="intro" class="intro">
+      <p class="kicker">Artificial life</p>
+      <h2><span>FIRE</span>BROX</h2>
+      <p class="tag">Simple laws. Impossible creatures.</p>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="brand-text">
+          <h1><span>FIRE</span>BROX</h1>
+          <p>Particle Life Lab</p>
+        </div>
+      </div>
+
+      <div class="top-center">
+        <label class="sr-only" for="preset">Preset</label>
+        <select id="preset"></select>
+        <p id="presetBlurb">Colonies that split, merge, and breathe.</p>
+      </div>
+
+      <div class="top-actions">
+        <div id="live" class="live"><i></i> Live</div>
+        <button id="randomize" class="btn accent" type="button">Randomize</button>
+        <button id="play" class="btn icon" type="button" aria-label="Pause">
+          <svg class="ico-pause" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" />
+            <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
+          </svg>
+          <svg class="ico-play" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M8 5v14l11-7z" fill="currentColor" />
+          </svg>
+        </button>
+        <button id="panelToggle" class="btn icon" type="button" aria-label="Toggle laws panel">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path
+              d="M4 7h16M4 12h10M4 17h13"
+              stroke="currentColor"
+              stroke-width="1.8"
+              fill="none"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <aside id="panel" class="panel">
+      <div class="panel-handle" aria-hidden="true"></div>
+      <header class="panel-head">
+        <p class="eyebrow">Laws of motion</p>
+        <h3>Genome</h3>
+      </header>
+
+      <section>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="species">Species</label><span id="speciesVal">4</span></div>
+          <input id="species" type="range" min="2" max="8" step="1" value="4" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="count">Particles</label><span id="countVal">2.4k</span></div>
+          <input id="count" type="range" min="200" max="7000" step="50" value="2400" />
+        </div>
+      </section>
+
+      <section>
+        <p class="section-title">Field</p>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="radius">Radius</label><span id="radiusVal">86</span></div>
+          <input id="radius" type="range" min="28" max="180" step="1" value="86" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="force">Force</label><span id="forceVal">280</span></div>
+          <input id="force" type="range" min="40" max="520" step="5" value="280" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="damp">Damping</label><span id="dampVal">4.2</span></div>
+          <input id="damp" type="range" min="0.4" max="10" step="0.1" value="4.2" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="collision">Collision β</label><span id="collisionVal">0.30</span></div>
+          <input id="collision" type="range" min="0.08" max="0.6" step="0.01" value="0.3" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="temp">Temperature</label><span id="tempVal">0</span></div>
+          <input id="temp" type="range" min="0" max="40" step="1" value="0" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="time">Time</label><span id="timeVal">1.00×</span></div>
+          <input id="time" type="range" min="0.15" max="2.2" step="0.05" value="1" />
+        </div>
+      </section>
+
+      <section>
+        <p class="section-title">World</p>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="trail">Trails</label><span id="trailVal">0.74</span></div>
+          <input id="trail" type="range" min="0" max="0.94" step="0.01" value="0.74" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="glow">Glow</label><span id="glowVal">1.00</span></div>
+          <input id="glow" type="range" min="0.5" max="1.8" step="0.02" value="1" />
+        </div>
+        <div class="row">
+          <label class="switch">
+            <input id="wrap" type="checkbox" checked />
+            <span class="track"></span>
+            Wrap torus
+          </label>
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="palette">Palette</label></div>
+          <select id="palette"></select>
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="mouseMode">Mouse</label></div>
+          <select id="mouseMode"></select>
+        </div>
+      </section>
+
+      <section>
+        <p class="section-title">Interaction matrix</p>
+        <p id="matrixHint" class="hint">Row feels column. Drag a cell vertically to rewrite the law.</p>
+        <div id="matrix" class="matrix" role="grid" aria-label="Force matrix"></div>
+        <div class="btn-row">
+          <button id="mutate" class="btn" type="button">Mutate</button>
+          <button id="symmetrize" class="btn" type="button">Symmetry</button>
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="randMode">Randomizer</label></div>
+          <select id="randMode"></select>
+        </div>
+      </section>
+
+      <section class="actions">
+        <button id="respawn" class="btn" type="button">Respawn</button>
+        <button id="copyLaws" class="btn" type="button">Copy link</button>
+        <button id="snapshot" class="btn" type="button">Snapshot</button>
+        <button id="fullscreen" class="btn" type="button">Fullscreen</button>
+        <button id="helpBtn" class="btn" type="button">Keys</button>
+      </section>
+
+      <p class="footnote">
+        Close-range repulsion keeps matter from collapsing. Mid-range forces, written in the matrix, do the rest.
+      </p>
+    </aside>
+
+    <div class="hud">
+      <div class="hud-block">
+        <span id="fps">60</span>
+        <small>FPS</small>
+      </div>
+      <div class="hud-block">
+        <span id="hudCount">2.4k</span>
+        <small>PARTICLES</small>
+      </div>
+      <div class="hud-block">
+        <span id="hudSeed">------</span>
+        <small>LAW</small>
+      </div>
+    </div>
+
+    <div id="legend" class="legend"></div>
+    <div id="toast" class="toast" role="status"></div>
+
+    <div id="helpModal" class="modal" aria-hidden="true">
+      <div class="modal-card">
+        <button id="helpClose" class="btn icon close" type="button" aria-label="Close">×</button>
+        <p class="eyebrow">Manual</p>
+        <h3>How the universe works</h3>
+        <p>
+          Every particle belongs to a species. The matrix is the genome: each cell says how strongly a species is
+          pulled toward — or driven away from — another. Life is not scripted. It happens.
+        </p>
+        <ul class="keys">
+          <li><kbd>Space</kbd> Pause</li>
+          <li><kbd>R</kbd> Randomize laws</li>
+          <li><kbd>G</kbd> Respawn</li>
+          <li><kbd>M</kbd> Mutate</li>
+          <li><kbd>H</kbd> Toggle panel</li>
+          <li><kbd>S</kbd> Snapshot</li>
+          <li><kbd>F</kbd> Fullscreen</li>
+          <li><kbd>1–9</kbd> Presets</li>
+          <li><kbd>?</kbd> This screen</li>
+        </ul>
+      </div>
+    </div>
+
+    <noscript>
+      <p class="noscript">FIREBROX needs JavaScript to run the particle laboratory.</p>
+    </noscript>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
