@@ -9,6 +9,10 @@ generated from a seed at runtime.
 node server.mjs        # or: npm start   →  http://localhost:5173
 ```
 
+The server has **live reload** built in: it watches `src/`, `index.html` and `styles.css`,
+and pushes a refresh to every open preview tab the moment anything changes. The game saves
+on unload and resumes automatically after a reload, so an update never costs you progress.
+
 **No build step and no runtime dependencies.** Three.js is vendored in `vendor/three/`
 and wired up with an import map, so the game is just static files — any static server
 (or `node server.mjs`) will do.

@@ -488,6 +488,22 @@ addEventListener('keydown', (e) => {
 
 setInterval(() => { if (game.running && !game.paused) saveGame(); }, 30000);
 
+// a live reload (or closing the tab) should never cost you progress
+for (const evt of ['beforeunload', 'pagehide']) {
+  addEventListener(evt, () => { if (game.running) saveGame(); });
+}
+
+// after a live reload, drop straight back into the game instead of the title screen
+try {
+  if (sessionStorage.getItem('firebrox.autoresume') === '1' && hasSave()) {
+    sessionStorage.removeItem('firebrox.autoresume');
+    setTimeout(() => {
+      startGame(true);
+      ui.log('PREVIEW UPDATED — journey resumed from your last save', 'good');
+    }, 50);
+  }
+} catch (e) { /* sessionStorage unavailable */ }
+
 // ------------------------------------------------------------------ loop
 let gatherTick = 1;
 let lastFrameTime = performance.now();
