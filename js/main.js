@@ -12,7 +12,8 @@ import {
 } from './ui.js';
 
 const canvas = document.getElementById('stage');
-const sim = new Simulation(window.innerWidth, window.innerHeight);
+const startSize = viewport();
+const sim = new Simulation(startSize.w, startSize.h);
 const renderer = new Renderer(canvas);
 
 const state = {
@@ -109,6 +110,10 @@ ui.openPanel();
 refresh();
 
 window.addEventListener('resize', layout);
+if (typeof ResizeObserver !== 'undefined') {
+  const ro = new ResizeObserver(() => layout());
+  ro.observe(document.documentElement);
+}
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
@@ -268,9 +273,16 @@ function applyPalette(id) {
   renderer.setPalette(colors);
 }
 
+function viewport() {
+  const w = Math.max(1, Math.floor(window.innerWidth || document.documentElement.clientWidth || 1));
+  const h = Math.max(1, Math.floor(window.innerHeight || document.documentElement.clientHeight || 1));
+  return { w, h };
+}
+
 function layout() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const { w, h } = viewport();
+  if (w < 2 || h < 2) return;
+  if (w === renderer.cssW && h === renderer.cssH) return;
   sim.resize(w, h);
   renderer.resize(w, h);
 }
@@ -386,7 +398,7 @@ function restoreFromHash() {
 
 function persist() {
   try {
-    localStorage.setItem('firebrox', JSON.stringify(serialize()));
+    localStorage.setItem('firebrox-v2', JSON.stringify(serialize()));
   } catch {
     /* ignore quota */
   }

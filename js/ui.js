@@ -63,7 +63,8 @@ export function mountUI(app) {
     if (e.target.id === 'helpModal') toggleHelp(false);
   });
   $('fullscreen').addEventListener('click', () => app.fullscreen());
-  $('intro').addEventListener('click', () => dismissIntro());
+  const intro = $('intro');
+  if (intro) intro.addEventListener('click', () => dismissIntro());
 
   $('matrix').addEventListener('pointerdown', (e) => {
     const cell = e.target.closest('.m-cell');
@@ -92,7 +93,7 @@ export function mountUI(app) {
     }
   });
 
-  setTimeout(dismissIntro, 2600);
+  dismissIntro();
 
   return {
     sync(state) {
@@ -139,16 +140,20 @@ export { PRESETS, PALETTES, RAND_MODES, randomizeMatrix, mutateMatrix, symmetriz
 
 function bindSlider(id, fn) {
   const el = document.getElementById(id);
+  if (!el) return;
   el.addEventListener('input', () => fn(Number(el.value)));
 }
 
 function setSlider(id, value, label) {
   const el = document.getElementById(id);
+  if (!el) return;
   if (document.activeElement !== el) el.value = String(value);
-  document.getElementById(`${id}Val`).textContent = label;
+  const out = document.getElementById(`${id}Val`);
+  if (out) out.textContent = label;
 }
 
 function fillSelect(el, items) {
+  if (!el) return;
   el.innerHTML = items.map((it) => `<option value="${it.value}">${it.label}</option>`).join('');
 }
 
