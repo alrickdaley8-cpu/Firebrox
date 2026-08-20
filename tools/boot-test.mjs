@@ -214,5 +214,224 @@ for (let i = 0; i < 80 && G.game.mode === 'surface'; i++) frames(30);
 input.keys.delete('Space'); input.keys.delete('KeyW');
 frames(20);
 console.log('mode after launch:', G.game.mode);
+// ---- FULL CONTROL AUDIT ----------------------------------------------
+console.log('\n=== CONTROL AUDIT ===');
+const results = [];
+const chk = (name, ok, detail = '') => {
+  results.push({ name, ok });
+  console.log(`${ok ? ' ok ' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
+};
+const S = () => G.game.surface;
+const SP = () => G.game.space;
+const hold = (code, n = 20) => { input.keys.add(code); frames(n); input.keys.delete(code); frames(2); };
+
+// --- make sure we start in space, unblocked, pointer locked
+if (G.game.mode !== 'space') { S().exitRequest = { lat: 0.1, lon: 0.1 }; frames(6); }
+input.locked = true;
+frames(10);
+
+// SPACE MODE
+{
+  SP().throttle = 0; SP().speed = 0;
+  const before = SP().throttle;
+  hold('KeyW', 30);
+  chk('space: W throttles up', SP().throttle > before, `throttle ${SP().throttle.toFixed(2)}`);
+  hold('KeyS', 40);
+  chk('space: S throttles down', SP().throttle < 0.2, `throttle ${SP().throttle.toFixed(2)}`);
+
+  const q0 = SP().ship.quaternion.clone();
+  hold('KeyA', 20);
+  chk('space: A rolls the ship', SP().ship.quaternion.angleTo(q0) > 0.01);
+  const q1 = SP().ship.quaternion.clone();
+  hold('KeyD', 20);
+  chk('space: D rolls the other way', SP().ship.quaternion.angleTo(q1) > 0.01);
+
+  SP().throttle = 1; frames(20);
+  const spd0 = SP().speed;
+  hold('ShiftLeft', 40);
+  chk('space: Shift boosts', SP().speed > spd0, `${Math.round(spd0)} -> ${Math.round(SP().speed)} u/s`);
+  SP().throttle = 0; SP().speed = 0; frames(10);
+
+  const bolts0 = SP().bolts.length;
+  input.mouseDown = true; frames(20); input.mouseDown = false;
+  chk('space: LMB fires cannons', SP().bolts.length > bolts0, `${SP().bolts.length} bolts in flight`);
+
+  key('KeyT'); frames(4);
+  chk('space: T enters cockpit', SP().cockpitView === true);
+  key('KeyT'); frames(4);
+  chk('space: T leaves cockpit', SP().cockpitView === false);
+
+  key('KeyM'); frames(4);
+  chk('space: M opens the galaxy map', G.game.map.open === true);
+  const rot0 = G.game.map.rot;
+  hold('KeyQ', 12);
+  chk('map: Q rotates', Math.abs(G.game.map.rot - rot0) > 0.001);
+  const rot1 = G.game.map.rot;
+  hold('KeyE', 12);
+  chk('map: E rotates the other way', Math.abs(G.game.map.rot - rot1) > 0.001);
+  key('KeyG'); frames(3);
+  chk('map: G switches to the intergalactic view', G.game.map.view === 'intergalactic');
+  key('KeyG'); frames(3);
+  key('Escape'); frames(3);
+  chk('map: Esc closes it and recaptures the mouse', !G.game.map.open && input.locked);
+
+  key('KeyC'); frames(3);
+  chk('any: C opens the refiner', !document.getElementById('craft').classList.contains('hidden'));
+  key('Escape'); frames(3);
+  chk('refiner: Esc closes it', document.getElementById('craft').classList.contains('hidden'));
+
+  key('F1'); frames(3);
+  chk('any: F1 opens the control list',
+    !document.getElementById('controls-overlay').classList.contains('hidden'),
+    document.querySelectorAll('#controls-list .ctrl-row').length + ' bindings listed');
+  key('Escape'); frames(3);
+  chk('controls: Esc closes it', document.getElementById('controls-overlay').classList.contains('hidden'));
+
+  key('Tab'); frames(3);
+  chk('any: Tab opens the journey log', !document.getElementById('pause').classList.contains('hidden'));
+  key('Tab'); frames(3);
+  chk('any: Tab closes it again', document.getElementById('pause').classList.contains('hidden'));
+
+  key('KeyH'); frames(3);
+  chk('any: H hides the HUD for photo mode', document.getElementById('hud').classList.contains('hidden'));
+  key('KeyH'); frames(3);
+  chk('any: H restores the HUD', !document.getElementById('hud').classList.contains('hidden'));
+
+  const exp0 = G.renderer.toneMappingExposure;
+  key('KeyP'); frames(2);
+  chk('any: P changes exposure', G.renderer.toneMappingExposure !== exp0);
+  key('KeyP'); frames(2);
+
+  key('KeyB'); frames(2);
+  chk('space: B refuses to build in orbit', S().buildMode === false);
+}
+
+// ATMOSPHERIC FLIGHT
+{
+  const holder2 = SP().planets[0];
+  const pl2 = holder2.userData.planet;
+  SP().transitCooldown = 0;
+  SP().ship.position.copy(holder2.position).add({ x: 0, y: 0, z: pl2.radius * 1.04 });
+  SP().throttle = 0; SP().speed = 0;
+  frames(120);
+  chk('space: flying at a planet enters the atmosphere', G.game.mode === 'surface' && S().piloting);
+
+  const alt = () => S().ship.position.y - S().height(S().ship.position.x, S().ship.position.z);
+  const a0 = alt();
+  hold('Space', 40);
+  chk('flight: Space climbs', alt() > a0, `${Math.round(a0)} -> ${Math.round(alt())} m`);
+  const a1 = alt();
+  hold('ControlLeft', 40);
+  chk('flight: Ctrl descends', alt() < a1, `${Math.round(a1)} -> ${Math.round(alt())} m`);
+
+  const sp0 = S().shipSpeed;
+  hold('KeyW', 30);
+  chk('flight: W accelerates', S().shipSpeed > sp0, `${Math.round(S().shipSpeed)} m/s`);
+  hold('KeyS', 40);
+  chk('flight: S brakes', S().shipSpeed < 60, `${Math.round(S().shipSpeed)} m/s`);
+
+  key('KeyT'); frames(3);
+  chk('flight: T enters the cockpit', S().cockpitView === true);
+  key('KeyT'); frames(3);
+
+  key('KeyV'); frames(3);
+  chk('flight: V refuses to drop the Exocraft mid-flight', !S().exocraft);
+
+  // set down
+  input.keys.add('ControlLeft');
+  for (let i = 0; i < 60 && alt() > 2.5; i++) frames(20);
+  input.keys.delete('ControlLeft');
+  frames(20);
+  hold('KeyF', 8);
+  chk('flight: F disembarks after landing', !S().piloting, `altitude ${alt().toFixed(1)} m`);
+}
+
+// ON FOOT
+{
+  const p0 = S().pos.clone();
+  hold('KeyW', 30);
+  chk('foot: W walks forward', S().pos.distanceTo(p0) > 1, `${S().pos.distanceTo(p0).toFixed(1)} m`);
+  const p1 = S().pos.clone();
+  hold('KeyD', 30);
+  chk('foot: D strafes', S().pos.distanceTo(p1) > 0.5);
+  const p2 = S().pos.clone();
+  hold('ShiftLeft', 1);
+  input.keys.add('KeyW'); input.keys.add('ShiftLeft'); frames(30);
+  input.keys.delete('KeyW'); input.keys.delete('ShiftLeft');
+  chk('foot: Shift sprints', S().pos.distanceTo(p2) > 4, `${S().pos.distanceTo(p2).toFixed(1)} m`);
+
+  S().grounded = true;
+  const jet0 = G.state.jetpack;
+  hold('Space', 40);
+  chk('foot: Space jumps and burns jetpack', G.state.jetpack < jet0 || S().vel.y !== 0);
+
+  const bolts0 = S().bolts.length;
+  input.mouseRight = true; frames(20); input.mouseRight = false;
+  chk('foot: RMB fires the boltcaster', S().bolts.length > bolts0, `${S().bolts.length} bolts`);
+
+  G.state.hazardProtection = 20; G.state.inventory.sodium = 200;
+  hold('KeyR', 6);
+  chk('foot: R recharges hazard protection with sodium',
+    G.state.hazardProtection > 20, `${Math.round(G.state.hazardProtection)}%`);
+
+  key('KeyB'); frames(3);
+  chk('foot: B opens build mode', S().buildMode === true);
+  const part0 = document.querySelector('#build-part b')?.textContent;
+  key('BracketRight'); frames(2);
+  chk('build: ] cycles the part', document.querySelector('#build-part b')?.textContent !== part0);
+  key('BracketLeft'); frames(2);
+  chk('build: [ cycles back', document.querySelector('#build-part b')?.textContent === part0);
+  G.state.inventory.ferrite = 900; G.state.inventory.carbon = 900;
+  const parts0 = S().baseParts.length;
+  input.mouseDown = true; frames(30); input.mouseDown = false; frames(3);
+  chk('build: LMB places a part', S().baseParts.length > parts0);
+  const parts1 = S().baseParts.length;
+  hold('KeyX', 30);
+  chk('build: X demolishes', S().baseParts.length < parts1);
+  key('KeyB'); frames(3);
+  chk('build: B exits build mode', S().buildMode === false);
+
+  const spot = S().buildSpot();
+  const h0 = S().height(spot.x, spot.z);
+  hold('KeyZ', 30);
+  chk('foot: Z digs terrain', S().height(spot.x, spot.z) < h0, `${(S().height(spot.x, spot.z) - h0).toFixed(1)} m`);
+  const h1 = S().height(spot.x, spot.z);
+  hold('KeyX', 30);
+  chk('foot: X raises terrain', S().height(spot.x, spot.z) > h1);
+
+  G.state.exocraftOwned = true;
+  key('KeyV'); frames(3);
+  chk('foot: V summons the Exocraft', !!S().exocraft);
+  hold('KeyF', 6);
+  chk('foot: F boards the Exocraft', S().inExocraft === true);
+  const ex0 = S().exocraft.position.clone();
+  const foot0 = S().pos.clone();
+  hold('KeyW', 40);
+  chk('exocraft: W drives', S().exocraft.position.distanceTo(ex0) > 2,
+    `${S().exocraft.position.distanceTo(ex0).toFixed(1)} m`);
+  chk('exocraft: the pilot rides along instead of walking',
+    S().pos.distanceTo(S().exocraft.position) < 4);
+  hold('KeyF', 6);
+  chk('exocraft: F disembarks', S().inExocraft === false);
+
+  // board the ship again
+  S().pos.copy(S().ship.position).add({ x: 2, y: 2, z: 2 });
+  G.state.launchFuel = 100;
+  hold('KeyE', 10);
+  chk('foot: E boards the ship', S().piloting === true);
+  S().disembark(); frames(4);
+
+  S().pos.copy(S().ship.position).add({ x: 2, y: 2, z: 2 });
+  const fuel0 = G.state.launchFuel;
+  hold('KeyQ', 8);
+  await new Promise((r) => setTimeout(r, 700));
+  frames(30);
+  chk('foot: Q launches straight to orbit', G.game.mode === 'space', `fuel ${fuel0} -> ${G.state.launchFuel}`);
+  chk('launch: thrusters consume fuel', G.state.launchFuel < fuel0);
+}
+
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} controls verified`);
+if (failed.length) console.log('FAILED:', failed.map((f) => f.name).join(' | '));
 console.log('ERRORS:', errors.length ? errors.slice(0, 4) : 'none');
-process.exit(errors.length ? 1 : 0);
+process.exit(errors.length || failed.length ? 1 : 0);

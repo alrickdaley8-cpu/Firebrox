@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { generateGalaxy, buildSystem, RESOURCES, distance, GALAXIES, galaxyDef, DRIVES } from './universe.js';
+import { generateGalaxy, buildSystem, RESOURCES, distance, GALAXIES, galaxyDef } from './universe.js';
 import {
   state, stats, saveGame, loadGame, clearSave, hasSave,
 } from './state.js';
@@ -12,6 +12,7 @@ import * as missions from './missions.js';
 import * as fleet from './fleet.js';
 import * as story from './story.js';
 import * as building from './building.js';
+import { renderControlsHTML } from './controls.js';
 import { input } from './input.js';
 import { ui } from './ui.js';
 import { SpaceMode } from './space.js';
@@ -59,6 +60,7 @@ const game = {
   crafting: false,
   settingsOpen: false,
   photoMode: false,
+  controlsOpen: false,
   atAnomaly: false,
   talking: false,
   teleporting: false,
@@ -173,24 +175,9 @@ function leaveAtmosphere(exit) {
   ui.log('LEFT THE ATMOSPHERE — welcome back to the void', 'good');
 }
 
-function landOn(planet) {
-  ui.loading(`Entering atmosphere of ${planet.name}…`);
-  audio.land();
-  setTimeout(() => {
-    game.surface.setPlanet(planet, game.system);
-    game.mode = 'surface';
-    ui.mode = 'surface';
-    state.launchFuel = Math.max(0, state.launchFuel - 20);
-    ui.loading(null);
-    ui.log(`LANDED — ${planet.name} · ${planet.biome.label} world`, 'good');
-    if (planet.biome.hazard !== 'None') ui.log(`ENVIRONMENT HAZARD: ${planet.biome.hazard}`, 'warn');
-    ui.log(`Gravity ${planet.gravity.toFixed(2)}g · ${planet.weather} · sentinels ${planet.sentinels}`, '');
-    input.lock();
-  }, 520);
-}
-
 function launchToSpace() {
   const planetIndex = game.surface.planet.index;
+  state.launchFuel = Math.max(0, state.launchFuel - 20);
   audio.sweep(120, 900, 1.1, 'sawtooth', 0.28);
   ui.loading('Leaving orbit…');
   setTimeout(() => {
@@ -360,6 +347,13 @@ function openCrafting() {
   ui.openCraft(() => { game.crafting = false; input.lock(); });
 }
 
+function toggleControls() {
+  game.controlsOpen = !game.controlsOpen;
+  const el = document.getElementById('controls-overlay');
+  el.classList.toggle('hidden', !game.controlsOpen);
+  if (game.controlsOpen) { input.unlock(); } else if (!game.paused) input.lock();
+}
+
 function openSettings() {
   game.settingsOpen = true;
   input.unlock();
@@ -414,6 +408,10 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Escape' || e.code === 'KeyE') ui.closeTrade();
     return;
   }
+  if (game.controlsOpen && e.code !== 'F1' && e.code !== 'Slash') {
+    if (e.code === 'Escape') toggleControls();
+    return;
+  }
   if (game.talking) { if (e.code === 'Escape') ui.closeDialogue(); return; }
   if (game.teleporting) { if (e.code === 'Escape') ui.closeTeleport(); return; }
   if (game.seeding) { if (e.code === 'Escape') ui.closeSeeds(); return; }
@@ -449,6 +447,12 @@ addEventListener('keydown', (e) => {
       if (game.mode === 'surface') game.surface.toggleBuildMode();
       else ui.log('Base building only works planetside', 'warn');
       break;
+    case 'KeyN':
+      if (game.mode === 'surface' && !game.surface.piloting) {
+        const base = building.baseFor(game.surface.planet);
+        ui.log(base ? `${base.name} — ${base.parts.length} parts built here` : 'No base on this world yet (press B)', '');
+      }
+      break;
     case 'BracketLeft': if (game.mode === 'surface' && game.surface.buildMode) game.surface.cycleBuildType(-1); break;
     case 'BracketRight': if (game.mode === 'surface' && game.surface.buildMode) game.surface.cycleBuildType(1); break;
     case 'KeyV': if (game.mode === 'surface') game.surface.summonExocraft(); break;
@@ -465,10 +469,17 @@ addEventListener('keydown', (e) => {
     case 'KeyH':
       game.photoMode = !game.photoMode;
       ui.showHUD(!game.photoMode);
-      ui.log(game.photoMode ? 'PHOTO MODE — press H to restore the HUD' : '', '');
+      if (game.photoMode) ui.log('PHOTO MODE — press H to restore the HUD', '');
       break;
     case 'Tab': e.preventDefault(); setPaused(!game.paused); break;
-    case 'Escape': if (game.map.open) game.map.hide(); break;
+    case 'Escape':
+      if (game.map.open) { game.map.hide(); input.lock(); }
+      break;
+    case 'F1':
+    case 'Slash':
+      e.preventDefault();
+      toggleControls();
+      break;
     case 'KeyP': renderer.toneMappingExposure = renderer.toneMappingExposure > 1 ? 0.85 : 1.05; break;
     default: break;
   }
@@ -496,7 +507,8 @@ function loop() {
 
   const active = game.mode === 'space' ? game.space : game.surface;
   const blocked = game.paused || game.map.open || game.docked || game.crafting
-    || game.settingsOpen || game.atAnomaly || game.talking || game.teleporting || game.seeding;
+    || game.settingsOpen || game.atAnomaly || game.talking || game.teleporting
+    || game.seeding || game.controlsOpen;
   input.enabled = !blocked && input.locked;
 
   if (!blocked) {
@@ -509,7 +521,6 @@ function loop() {
       else if (game.space.anomalyRequest) dockAtAnomaly();
       else if (game.space.atlasRequest) takeAtlasSeed();
       else if (game.space.entryRequest) atmosphericEntry(game.space.entryRequest);
-      else if (game.space.landRequest) landOn(game.space.landRequest);
       else if (game.space.dockRequest) dockAtStation();
     } else if (game.surface.exitRequest) {
       const ex = game.surface.exitRequest;
@@ -560,6 +571,11 @@ function loop() {
   ui.update(info);
   composers[game.mode].render();
 }
+
+document.getElementById('controls-list').innerHTML = renderControlsHTML();
+document.getElementById('btn-controls-close').onclick = () => toggleControls();
+document.getElementById('btn-controls').onclick = () => { setPaused(false); toggleControls(); };
+document.getElementById('title-controls').innerHTML = renderControlsHTML();
 
 applySettings();
 resize();

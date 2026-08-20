@@ -344,3 +344,19 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-fa
   position: absolute; inset: 0; opacity: 0; pointer-events: none;
   transition: opacity 0.25s linear; mix-blend-mode: screen;
 }
+
+/* ---------------- controls reference ---------------- */
+.controls-list {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px;
+  overflow-y: auto; max-height: 62vh; text-align: left;
+}
+.ctrl-group { border-left: 1px solid var(--line); padding-left: 12px; }
+.ctrl-title {
+  font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--accent2); margin-bottom: 7px;
+}
+.ctrl-row { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; font-size: 11px; }
+.ctrl-keys { flex: 0 0 92px; display: flex; gap: 3px; flex-wrap: wrap; }
+.ctrl-keys kbd { font-size: 9px; padding: 1px 5px; color: var(--accent); border-color: rgba(255,159,67,0.4); }
+.ctrl-label { color: rgba(200, 228, 245, 0.78); line-height: 1.4; }
+.title-controls { max-height: 34vh; margin-bottom: 8px; }

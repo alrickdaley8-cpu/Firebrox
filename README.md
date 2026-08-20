@@ -18,6 +18,31 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
                              # drives thousands of frames, asserts zero errors
 ```
 
+## Controls audit & bug-fix pass
+
+Every binding now comes from one source of truth (`src/controls.js`), which renders the
+title screen list, the pause-menu **Controls** button and the **`F1`** overlay — so the
+docs can never drift from the code. The boot test presses all 53 of them in the right
+mode and asserts the effect: **53/53 verified**.
+
+Fixed in this pass:
+
+* Driving the Exocraft also walked your body — WASD moved the pilot *and* the rover,
+  and `Space` fired the jetpack from the driver's seat. Player movement, jumping,
+  mining and terrain editing are now suppressed while you drive.
+* `B` opened build mode while flying the ship or driving the rover, leaving a ghost part
+  stuck to the camera. Both are refused with an explanation now.
+* `V` could drop the Exocraft mid-flight.
+* Closing the galaxy map with `Esc` released the mouse and never recaptured it.
+* Photo mode pushed an empty line into the message log every time you left it.
+* Climbing to orbit was free — atmospheric launches and the instant `Q` launch now both
+  burn launch-thruster fuel, with a warning when the tank is dry.
+* Sentinel fire hit your exosuit shield while you were sealed inside your ship; it hits
+  the hull now.
+* Sentinels and their shots froze in mid-air while you flew overhead — the whole surface
+  combat layer keeps simulating during atmospheric flight.
+* Removed the dead instant-landing path left over from before seamless entry.
+
 ## Cockpit & seamless landings
 
 * **First-person cockpit** (`T`) — a full interior: dashboard, canopy struts, side consoles

@@ -85,28 +85,17 @@
     <h1>FIREBROX</h1>
     <h2>an infinite universe awaits</h2>
     <p class="blurb">
-      320 star systems. Twelve biomes. Every world procedurally built the moment you
-      arrive. Fly, land, mine, scan, trade, take contracts, dodge sentinels, buy new
-      ships and fall through black holes toward the centre of <b>Euclid-VII</b> —
-      then break through the core into a brand new galaxy.
+      Sixteen galaxies. Twelve biomes. Fly your ship straight down through a planet's
+      atmosphere without a single loading screen, land it, and step out. Mine, build,
+      farm, trade, fight sentinels, learn alien languages, ride wormholes and break
+      through the galactic core into a whole new galaxy.
+      Press <kbd>F1</kbd> at any time for the full control list.
     </p>
     <div class="btn-row">
       <button id="btn-new">Begin Journey</button>
       <button id="btn-continue">Continue</button>
     </div>
-    <div class="controls-grid">
-      <div><b>Space flight</b><span>W/S throttle · mouse steer · A/D roll · Shift boost · Space pulse-warp</span></div>
-      <div><b>Combat</b><span>Left-click photon cannons · shields regenerate out of combat</span></div>
-      <div><b>Seamless landing</b><span>Just fly at a planet — you punch through the atmosphere and keep flying, no cuts</span></div>
-      <div><b>Cockpit</b><span><kbd>T</kbd> toggles the first-person cockpit with live dashboard screens</span></div>
-      <div><b>On foot</b><span>WASD move · Space jump/jetpack · Shift sprint · left-click mining beam</span></div>
-      <div><b>Scanning</b><span>Hold <kbd>F</kbd> on worlds, lifeforms and alien ruins for units &amp; loot</span></div>
-      <div><b>On-foot combat</b><span>Right-click boltcaster · sentinels escalate as you strip a planet</span></div>
-      <div><b>Build &amp; terraform</b><span><kbd>B</kbd> build mode · <kbd>Z</kbd>/<kbd>X</kbd> dig and raise terrain · farm, store, teleport</span></div>
-      <div><b>Exocraft &amp; wrecks</b><span><kbd>V</kbd> summon rover · <kbd>F</kbd> board · repair crashed ships to claim them</span></div>
-      <div><b>Wormholes &amp; portals</b><span>Fly into a wormhole to cross the galaxy · step through ancient portals on foot</span></div>
-      <div><b>Tools</b><span><kbd>M</kbd> map · <kbd>C</kbd> refiner · <kbd>R</kbd> hazard · <kbd>G</kbd> feed fauna · <kbd>H</kbd> photo · <kbd>Tab</kbd> log</span></div>
-    </div>
+    <div id="title-controls" class="controls-list title-controls"></div>
     <div class="hint">Click anywhere in the game to capture the mouse. <kbd>Esc</kbd> releases it.</div>
   </div>
 </div>
@@ -176,6 +165,16 @@
       </div>
     </div>
     <div class="btn-row"><button id="btn-trade-close">Undock</button></div>
+  </div>
+</div>
+
+<!-- ============ CONTROLS ============ -->
+<div id="controls-overlay" class="overlay hidden">
+  <div class="craft-inner" style="width:min(980px,95vw)">
+    <h2>CONTROLS</h2>
+    <div class="map-sub">Everything the game listens for · press <kbd>F1</kbd> any time</div>
+    <div id="controls-list" class="controls-list"></div>
+    <div class="btn-row" style="margin-top:14px"><button id="btn-controls-close">Close</button></div>
   </div>
 </div>
 
@@ -271,6 +270,7 @@
     <div class="btn-row">
       <button id="btn-resume">Resume</button>
       <button id="btn-settings">Settings</button>
+      <button id="btn-controls">Controls</button>
       <button id="btn-save">Save</button>
       <button id="btn-quit">Abandon Journey</button>
     </div>

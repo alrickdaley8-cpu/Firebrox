@@ -105,7 +105,6 @@ export class SpaceMode {
     this.pulse = 0;
     this.landHold = 0;
     this.dockHold = 0;
-    this.landRequest = null;
     this.dockRequest = false;
     this.scanTimer = 0;
     this.fireCooldown = 0;
@@ -941,7 +940,6 @@ export class SpaceMode {
 
   // ------------------------------------------------------------ HUD interactions
   handleTargeting(dt, near) {
-    this.landRequest = null;
     this.dockRequest = false;
     let prompt = '';
     let tName = null, tSub = '', scanPct = null;

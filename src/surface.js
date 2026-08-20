@@ -741,6 +741,7 @@ export class SurfaceMode {
     const spot = this.latLonToXZ(entry.lat, entry.lon);
     const ground = this.height(spot.x, spot.z);
     this.piloting = true;
+    this.fuelWarned = false;
     this.entryFx = 1;
     this.ship.position.set(spot.x, ground + 620, spot.z);
     this.shipYaw = Math.atan2(-entry.heading.x, -entry.heading.z);
@@ -846,8 +847,14 @@ export class SurfaceMode {
 
     // leaving the atmosphere hands you back to space
     if (altitude > 1400 && this.shipVel.y > 20) {
-      const ll = this.xzToLatLon(this.ship.position.x, this.ship.position.z);
-      this.exitRequest = { lat: ll.lat, lon: ll.lon };
+      if (state.launchFuel >= 15) {
+        state.launchFuel = Math.max(0, state.launchFuel - 15);
+        const ll = this.xzToLatLon(this.ship.position.x, this.ship.position.z);
+        this.exitRequest = { lat: ll.lat, lon: ll.lon };
+      } else if (!this.fuelWarned) {
+        this.fuelWarned = true;
+        ui.log('LAUNCH THRUSTERS DRY — land and refuel with G (20 Di-hydrogen)', 'bad');
+      }
     }
 
     // the camera rides the ship
@@ -921,6 +928,8 @@ export class SurfaceMode {
     this.ensureChunks();
     this.updateSky(dt);
     this.updateCreatures(dt);
+    this.updateSentinels(dt);
+    this.updateBolts(dt);
   }
 
   // -------------------------------------------------- base building
@@ -946,6 +955,8 @@ export class SurfaceMode {
   }
 
   toggleBuildMode() {
+    if (this.piloting) { ui.log('Land and step outside before building', 'warn'); return false; }
+    if (this.inExocraft) { ui.log('Leave the Exocraft before building', 'warn'); return false; }
     this.buildMode = !this.buildMode;
     if (this.ghost) { this.scene.remove(this.ghost); this.ghost = null; }
     if (this.buildMode) {
@@ -962,6 +973,7 @@ export class SurfaceMode {
       ui.log('BUILD MODE — left-click to place · [ ] to cycle parts · X to demolish · B to exit', 'good');
     }
     ui.buildHud(this.buildMode ? this.buildType : null);
+    return this.buildMode;
   }
 
   cycleBuildType(dir) {
@@ -1084,6 +1096,7 @@ export class SurfaceMode {
 
   // -------------------------------------------------- exocraft
   summonExocraft() {
+    if (this.piloting) { ui.log('Land first — the Exocraft cannot be dropped mid-flight', 'warn'); return; }
     if (!state.exocraftOwned) { ui.log('You do not own an Exocraft — buy one at a Space Anomaly', 'bad'); return; }
     if (!this.exocraft) {
       this.exocraft = buildExocraft();
@@ -1293,6 +1306,11 @@ export class SurfaceMode {
   damagePlayer(dmg) {
     this.hitTimer = 0.6;
     ui.damageFlash();
+    if (this.piloting) {
+      state.shipHealth = Math.max(1, state.shipHealth - dmg * 0.5);
+      audio.blip(110, 0.14, 'square', 0.22);
+      return;
+    }
     if (state.suitShield > 0) {
       state.suitShield = Math.max(0, state.suitShield - dmg);
       audio.blip(160, 0.1, 'square', 0.2);
@@ -1411,10 +1429,12 @@ export class SurfaceMode {
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const wish = new THREE.Vector3();
-    if (input.down('KeyW')) wish.add(forward);
-    if (input.down('KeyS')) wish.sub(forward);
-    if (input.down('KeyD')) wish.add(right);
-    if (input.down('KeyA')) wish.sub(right);
+    if (!this.inExocraft) {
+      if (input.down('KeyW')) wish.add(forward);
+      if (input.down('KeyS')) wish.sub(forward);
+      if (input.down('KeyD')) wish.add(right);
+      if (input.down('KeyA')) wish.sub(right);
+    }
     const sprint = input.down('ShiftLeft') || input.down('ShiftRight');
     const speed = sprint ? 18 : 9;
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
@@ -1423,7 +1443,7 @@ export class SurfaceMode {
     this.vel.x += (wish.x - this.vel.x) * Math.min(1, dt * accel);
     this.vel.z += (wish.z - this.vel.z) * Math.min(1, dt * accel);
 
-    if (input.down('Space')) {
+    if (input.down('Space') && !this.inExocraft) {
       if (this.grounded) {
         this.vel.y = 9 * Math.sqrt(this.planet.gravity);
         this.grounded = false;
@@ -1577,7 +1597,7 @@ export class SurfaceMode {
     }
 
     // terrain manipulator
-    if (!this.buildMode && this.editCooldown <= 0) {
+    if (!this.buildMode && !this.inExocraft && this.editCooldown <= 0) {
       if (input.down('KeyZ')) { this.editCooldown = 0.12; this.applyEdit(-3.2); }
       else if (input.down('KeyX')) { this.editCooldown = 0.12; this.applyEdit(2.6); }
     }
@@ -1742,7 +1762,7 @@ export class SurfaceMode {
       if (o?.userData?.res) hitProp = { obj: o, point: hits[0].point };
     }
 
-    if (hitProp && !structure && !this.buildMode) {
+    if (hitProp && !structure && !this.buildMode && !this.inExocraft) {
       const u = hitProp.obj.userData;
       tName = u.label.toUpperCase();
       tSub = `${u.res.toUpperCase()} · ${Math.max(0, Math.round(u.hp * 100))}%`;
