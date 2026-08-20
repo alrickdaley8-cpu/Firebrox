@@ -22,7 +22,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"J.A.R.V.I.S. online  →  http://0.0.0.0:{PORT}")
+    print(f"J.A.R.V.I.S. 12 Titanium  →  http://0.0.0.0:{PORT}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

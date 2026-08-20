@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>J.A.R.V.I.S. — Just A Rather Very Intelligent System</title>
+  <meta name="theme-color" content="#02060c" />
+  <title>J.A.R.V.I.S. 12 — Titanium Core</title>
   <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
@@ -16,87 +18,161 @@
   <div class="scanlines" aria-hidden="true"></div>
   <div class="hex-veil" aria-hidden="true"></div>
 
-  <!-- BOOT -->
   <section id="boot" class="boot">
+    <div class="boot-grid" aria-hidden="true"></div>
     <div class="boot-inner">
-      <p class="boot-corp">STARK INDUSTRIES · MALIBU · PROPRIETARY</p>
+      <p class="boot-corp">STARK INDUSTRIES · MALIBU · CLASSIFIED</p>
       <h1 class="boot-title">
         <span>J</span><span>.</span><span>A</span><span>.</span><span>R</span><span>.</span><span>V</span><span>.</span><span>I</span><span>.</span><span>S</span>
       </h1>
       <p class="boot-sub">JUST A RATHER VERY INTELLIGENT SYSTEM</p>
+      <p class="boot-ver">TITANIUM CORE <b>12.0.7</b> · NEURAL LATTICE 8192</p>
       <div class="boot-reactor">
         <img src="assets/arc-reactor.png" alt="" />
         <div class="boot-ring"></div>
         <div class="boot-ring delay"></div>
+        <svg class="boot-ticks" viewBox="0 0 200 200" aria-hidden="true">
+          <circle cx="100" cy="100" r="92" fill="none" stroke="currentColor" stroke-dasharray="2 8" />
+        </svg>
       </div>
       <div class="boot-bar"><i id="boot-fill"></i></div>
       <p id="boot-pct">00%</p>
-      <ul id="boot-log" class="boot-log"></ul>
+      <div class="boot-cols">
+        <ul id="boot-log" class="boot-log"></ul>
+        <ul id="boot-log-2" class="boot-log"></ul>
+      </div>
       <button id="boot-skip" type="button">SKIP INITIALIZATION</button>
     </div>
   </section>
 
-  <!-- APP -->
   <div id="app" class="app" hidden>
     <header class="topbar">
       <div class="brand">
         <img src="assets/favicon.png" alt="" class="brand-mark" />
         <div>
           <strong>J.A.R.V.I.S.</strong>
-          <em id="build-tag">OS 11.4.2 · ARC CORE</em>
+          <em id="build-tag">OS 12.0.7 · TITANIUM</em>
         </div>
       </div>
       <div class="top-center">
         <span class="chip live"><i></i> LINK SECURE</span>
         <span class="chip" id="sat-chip">SAT-07</span>
         <span class="chip" id="mode-chip">CIVILIAN</span>
+        <span class="chip threat" id="threat-chip">THREAT LOW</span>
+        <span class="chip gold" id="armor-chip">MK-85 STANDBY</span>
       </div>
       <div class="clock-block">
         <time id="clock">00:00:00</time>
         <span id="date-line">—</span>
+        <span id="utc-line">UTC —</span>
       </div>
     </header>
 
     <aside class="panel left-panel">
-      <h2>SYSTEM VITALS</h2>
-      <div class="meters" id="meters"></div>
-      <div class="radar-wrap">
-        <h3>SWEEP</h3>
-        <canvas id="radar" width="220" height="220"></canvas>
-        <p id="radar-note">Perimeter clear</p>
+      <div class="panel-tabs" id="left-tabs">
+        <button type="button" class="on" data-pane="vitals">VITALS</button>
+        <button type="button" data-pane="armory">ARMORY</button>
+        <button type="button" data-pane="world">WORLD</button>
       </div>
-      <div class="mini-stats">
-        <div><span>PWR</span><b id="pwr">100%</b></div>
-        <div><span>LAT</span><b id="lat">12ms</b></div>
-        <div><span>UPLINK</span><b id="uplink">99.9</b></div>
+      <div id="pane-vitals" class="pane on">
+        <h2>SYSTEM VITALS</h2>
+        <div class="meters" id="meters"></div>
+        <div class="radar-wrap">
+          <h3>SWEEP</h3>
+          <canvas id="radar" width="240" height="240"></canvas>
+          <p id="radar-note">Perimeter clear</p>
+        </div>
+        <div class="mini-stats">
+          <div><span>PWR</span><b id="pwr">100%</b></div>
+          <div><span>LAT</span><b id="lat">12ms</b></div>
+          <div><span>UPLINK</span><b id="uplink">99.9</b></div>
+          <div><span>CPU</span><b id="cpu">18%</b></div>
+        </div>
+      </div>
+      <div id="pane-armory" class="pane">
+        <h2>ARMOR BAY</h2>
+        <p class="hint">Select a mark or say “deploy mark 42”.</p>
+        <div class="armor-grid" id="armor-grid"></div>
+      </div>
+      <div id="pane-world" class="pane">
+        <h2>SATELLITE</h2>
+        <div class="globe-wrap">
+          <img src="assets/globe.png" alt="" class="globe" />
+          <div class="globe-ring"></div>
+        </div>
+        <div class="wx-card" id="wx-card">
+          <span class="wx-loc" id="wx-loc">ORMOND BEACH</span>
+          <strong id="wx-temp">—°</strong>
+          <em id="wx-desc">Acquiring sensors…</em>
+        </div>
+        <div class="world-clocks" id="world-clocks"></div>
       </div>
     </aside>
 
     <main class="stage">
+      <div class="data-col left-col" id="data-left"></div>
+      <div class="data-col right-col" id="data-right"></div>
       <div class="orbit o1"></div>
       <div class="orbit o2"></div>
       <div class="orbit o3"></div>
+      <svg class="orbit-ticks" viewBox="0 0 400 400" aria-hidden="true">
+        <circle cx="200" cy="200" r="168" fill="none" stroke="currentColor" stroke-dasharray="3 11" />
+        <circle cx="200" cy="200" r="196" fill="none" stroke="currentColor" stroke-dasharray="1 17" opacity="0.5" />
+      </svg>
       <div class="reactor" id="reactor" title="Click to speak">
         <div class="reactor-glow"></div>
+        <canvas id="wave" width="320" height="320"></canvas>
         <img src="assets/arc-reactor.png" alt="Arc reactor" />
         <div class="listen-ring" id="listen-ring"></div>
       </div>
       <p class="reactor-caption" id="reactor-caption">AWAITING DIRECTIVE</p>
       <p class="spoken" id="spoken"></p>
       <div class="quick" id="quick">
-        <button data-cmd="status report">STATUS</button>
-        <button data-cmd="run diagnostics">DIAGNOSTICS</button>
-        <button data-cmd="suit up">SUIT UP</button>
-        <button data-cmd="weather">WEATHER</button>
-        <button data-cmd="initiate scan">SCAN</button>
-        <button data-cmd="help">PROTOCOLS</button>
+        <button type="button" data-cmd="daily briefing">BRIEFING</button>
+        <button type="button" data-cmd="status report">STATUS</button>
+        <button type="button" data-cmd="run diagnostics">DIAGNOSTICS</button>
+        <button type="button" data-cmd="suit up">SUIT UP</button>
+        <button type="button" data-cmd="weather">WEATHER</button>
+        <button type="button" data-cmd="what's the news">INTEL</button>
+        <button type="button" data-cmd="initiate scan">SCAN</button>
+        <button type="button" data-cmd="help">PROTOCOLS</button>
       </div>
     </main>
 
     <aside class="panel right-panel">
-      <h2>COMMS</h2>
-      <div id="feed" class="feed"></div>
+      <div class="panel-tabs" id="right-tabs">
+        <button type="button" class="on" data-pane="comms">COMMS</button>
+        <button type="button" data-pane="intel">INTEL</button>
+        <button type="button" data-pane="missions">MISSIONS</button>
+        <button type="button" data-pane="notes">NOTES</button>
+      </div>
+      <div id="pane-comms" class="pane on">
+        <div id="feed" class="feed"></div>
+      </div>
+      <div id="pane-intel" class="pane">
+        <div id="intel-body" class="intel-body"></div>
+      </div>
+      <div id="pane-missions" class="pane">
+        <form id="mission-form" class="mini-form">
+          <input id="mission-in" placeholder="New mission…" maxlength="80" />
+          <button type="submit">FILE</button>
+        </form>
+        <div id="missions-body" class="list-body"></div>
+      </div>
+      <div id="pane-notes" class="pane">
+        <form id="note-form" class="mini-form">
+          <input id="note-in" placeholder="Remind me to…" maxlength="80" />
+          <button type="submit">PIN</button>
+        </form>
+        <div id="notes-body" class="list-body"></div>
+      </div>
     </aside>
+
+    <div class="ticker">
+      <span class="ticker-tag">MESH</span>
+      <div class="ticker-mask"><p id="ticker">J.A.R.V.I.S. 12 TITANIUM · waiting for uplink…</p></div>
+      <span id="uptime">UP 00:00:00</span>
+    </div>
 
     <footer class="dock">
       <button id="mic-btn" class="mic" type="button" aria-label="Voice input">
@@ -107,21 +183,52 @@
       </button>
       <form id="cmd-form" autocomplete="off">
         <label class="sr" for="cmd">Command</label>
-        <span class="prompt">SIR &gt;</span>
-        <input id="cmd" name="cmd" placeholder="Address J.A.R.V.I.S. — or press the reactor to speak" />
+        <span class="prompt" id="prompt">SIR &gt;</span>
+        <div class="cmd-wrap">
+          <input id="cmd" name="cmd" placeholder="Address J.A.R.V.I.S. — or press the reactor to speak" />
+          <ul id="suggest" class="suggest" hidden></ul>
+        </div>
         <button type="submit">ENGAGE</button>
       </form>
+      <button id="settings-btn" class="icon-btn" type="button" title="Preferences">CFG</button>
     </footer>
   </div>
 
-  <!-- OVERLAYS -->
+  <aside id="settings" class="drawer" hidden>
+    <h2>PREFERENCES</h2>
+    <label class="tog"><input type="checkbox" id="set-voice" checked /> Voice reply</label>
+    <label class="tog"><input type="checkbox" id="set-listen" /> Always listen (wake: Jarvis)</label>
+    <label class="tog"><input type="checkbox" id="set-fx" checked /> Interface tones</label>
+    <label class="tog"><input type="checkbox" id="set-calm" /> Calm motion</label>
+    <label class="slide">Speech rate <input type="range" id="set-rate" min="0.7" max="1.3" step="0.05" value="1.02" /></label>
+    <label class="slide">Master gain <input type="range" id="set-gain" min="0" max="1" step="0.05" value="0.7" /></label>
+    <div class="theme-row">
+      <button type="button" data-theme="cyan">CYAN</button>
+      <button type="button" data-theme="gold">GOLD</button>
+      <button type="button" data-theme="crimson">CRIMSON</button>
+      <button type="button" data-theme="stealth">STEALTH</button>
+    </div>
+    <p class="hint">Esc hush · Alt+J command · ↑↓ history · ? shortcuts</p>
+    <button id="settings-close" type="button">CLOSE</button>
+  </aside>
+
   <div id="suitup" class="overlay" hidden>
     <img src="assets/helmet.png" alt="" class="helmet" />
     <div class="overlay-copy">
-      <p class="tag">MARK LXXXV</p>
+      <p class="tag" id="suit-mark">MARK LXXXV</p>
       <h2>ARMOR PROTOCOL</h2>
       <p id="suit-line">Assembling nanotech lattice…</p>
+      <ul id="suit-subs" class="subs"></ul>
       <div class="boot-bar gold"><i id="suit-fill"></i></div>
+    </div>
+  </div>
+
+  <div id="party" class="overlay" hidden>
+    <div class="overlay-copy">
+      <p class="tag">PRIORITY OMEGA</p>
+      <h2>HOUSE PARTY</h2>
+      <p id="party-line">Spinning up the remaining marks…</p>
+      <div class="party-grid" id="party-grid"></div>
     </div>
   </div>
 
@@ -130,15 +237,37 @@
       <p class="tag">PRIORITY ALPHA</p>
       <h2>LOCKDOWN</h2>
       <p>Facility sealed. Biometric hold in effect.</p>
+      <p class="lock-count" id="lock-count">SEALED</p>
       <button id="unlock-btn" type="button">AUTHORIZE RELEASE</button>
     </div>
   </div>
 
+  <div id="flight" class="flight" hidden>
+    <div class="horizon" id="horizon"></div>
+    <div class="flight-read">
+      <div><span>ALT</span><b id="flt-alt">00000</b></div>
+      <div><span>SPD</span><b id="flt-spd">000</b></div>
+      <div><span>HDG</span><b id="flt-hdg">000</b></div>
+      <div><span>G</span><b id="flt-g">1.00</b></div>
+    </div>
+    <p class="flight-note">FLIGHT MODE · say “land” to disengage</p>
+  </div>
+
   <div id="scanfx" class="scanfx" hidden></div>
+  <div id="toasts" class="toasts"></div>
+  <div id="help-modal" class="overlay dim" hidden>
+    <div class="help-card">
+      <p class="tag">PROTOCOL INDEX</p>
+      <div id="help-body"></div>
+      <button id="help-close" type="button">DISMISS</button>
+    </div>
+  </div>
 
   <script src="js/audio.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/voice.js"></script>
+  <script src="js/intel.js"></script>
+  <script src="js/systems.js"></script>
   <script src="js/brain.js"></script>
   <script src="js/app.js"></script>
 </body>
