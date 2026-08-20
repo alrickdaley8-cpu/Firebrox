@@ -4,8 +4,13 @@ import {
   buyUpgrade, buyShip, buyDrive, renameDiscovery,
 } from './state.js';
 import { RESOURCES, ECONOMIES, DRIVES, GALAXIES } from './universe.js';
+import { addResource as addResourceSafe } from './state.js';
 import { RECIPES, canCraft, craft } from './crafting.js';
 import * as missions from './missions.js';
+import * as building from './building.js';
+import * as aliens from './aliens.js';
+import * as fleet from './fleet.js';
+import * as story from './story.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,6 +46,19 @@ export const ui = {
     $('btn-trade-close').onclick = () => this.closeTrade();
     $('btn-craft-close').onclick = () => this.closeCraft();
     $('btn-anomaly-close').onclick = () => this.closeAnomaly();
+    $('btn-dialogue-close').onclick = () => this.closeDialogue();
+    $('btn-teleport-close').onclick = () => this.closeTeleport();
+    $('btn-seeds-close').onclick = () => this.closeSeeds();
+    document.querySelectorAll('.log-tabs .tab').forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll('.log-tabs .tab').forEach((b) => b.classList.toggle('active', b === btn));
+        const which = btn.dataset.log;
+        $('discovery-list').classList.toggle('hidden', which !== 'discoveries');
+        $('milestone-list').classList.toggle('hidden', which !== 'milestones');
+        $('story-list').classList.toggle('hidden', which !== 'story');
+        $('language-list').classList.toggle('hidden', which !== 'language');
+      };
+    });
     $('btn-settings-close').onclick = () => this.closeSettings();
     $('btn-settings-reset').onclick = () => {
       Object.assign(state.settings, DEFAULT_SETTINGS);
@@ -67,6 +85,8 @@ export const ui = {
       galaxy: $('hud-galaxy'),
       missionTracker: $('mission-tracker'), missionList: $('mission-list'),
       sentinelAlert: $('sentinel-alert'), sentinelPips: $('sentinel-pips'),
+      buildHudEl: $('build-hud'), buildPart: $('build-part'),
+      objective: $('objective'), objTitle: $('objective-title'), objText: $('objective-text'),
       bars: {}, slots: {},
     };
     for (const b of BAR_DEFS) {
@@ -176,6 +196,20 @@ export const ui = {
           <div class="m-foot">${m.progress}/${m.target}${done ? ' — return to a station' : ''}</div>
         </div>`;
       }).join('');
+    }
+
+    this.hudInfoExtras(info);
+
+    // atlas path objective
+    const step = story.current();
+    const stepSig = step ? step.id + ':' + state.story.seeds : 'done';
+    if (this.last.stepSig !== stepSig) {
+      this.last.stepSig = stepSig;
+      r.objective.classList.toggle('hidden', !step);
+      if (step) {
+        r.objTitle.textContent = step.title;
+        r.objText.innerHTML = `${step.objective}<br><span class="hint-sm">${step.hint}</span>`;
+      }
     }
 
     // sentinel alert
@@ -308,6 +342,14 @@ export const ui = {
 
   showHUD(v) { $('hud').classList.toggle('hidden', !v); },
 
+  hudInfoExtras(info) {
+    if (!info) return;
+    if (this.last.exoMode !== info.exocraft) {
+      this.last.exoMode = info.exocraft;
+      if (info.exocraft) this.log('EXOCRAFT — WASD to drive, Shift to boost, F to disembark', '');
+    }
+  },
+
   loading(text) {
     if (!text) { $('loading').classList.add('hidden'); return; }
     $('load-text').textContent = text;
@@ -332,6 +374,103 @@ export const ui = {
       el.style.transition = 'opacity 500ms ease-out';
       el.style.opacity = '0';
     });
+  },
+
+  buildHud(type) {
+    const el = $('build-hud');
+    el.classList.toggle('hidden', !type);
+    if (!type) return;
+    const part = building.PARTS[type];
+    const cost = Object.entries(part.cost).map(([k, v]) => `${v} ${RESOURCES[k]?.label || k}`).join(' + ');
+    $('build-part').innerHTML = `<b>${part.label}</b><span>${part.desc}</span><em>${cost}</em>`;
+  },
+
+  storyStep(step) {
+    this.log(`ATLAS PATH — ${step.title} complete (+${(step.reward.units || 0).toLocaleString()} units)`, 'good');
+    this.log(step.lore, '');
+  },
+
+  milestone(m) {
+    this.log(`MILESTONE — ${m.label} tier ${m.tier} (+${m.reward.toLocaleString()} units)`, 'good');
+  },
+
+  // ---------------------------------------------------------- alien dialogue
+  openDialogue(encounter, onClose) {
+    this.encounter = encounter;
+    this.onDialogueClose = onClose;
+    $('dialogue').classList.remove('hidden');
+    $('dialogue-race').innerHTML = `<span style="color:${encounter.race.color}">${encounter.race.label}</span>
+      · ${aliens.standingTitle(encounter.raceKey)} · ${encounter.race.blurb}`;
+    $('dialogue-greeting').textContent = encounter.greeting;
+    $('dialogue-prompt').textContent = encounter.prompt;
+    $('dialogue-result').textContent = '';
+    $('dialogue-options').innerHTML = encounter.options.map((o, i) =>
+      `<button data-opt="${i}">${o.text}</button>`).join('');
+    $('dialogue-options').querySelectorAll('[data-opt]').forEach((btn) => {
+      btn.onclick = () => {
+        const opt = encounter.options[Number(btn.dataset.opt)];
+        const res = aliens.choose(encounter, opt);
+        $('dialogue-result').innerHTML = `${res.log}<br><b>${res.rewards.join(' · ')}</b>`;
+        $('dialogue-options').querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      };
+    });
+  },
+  closeDialogue() {
+    $('dialogue').classList.add('hidden');
+    this.onDialogueClose?.();
+  },
+
+  // ---------------------------------------------------------- teleporters
+  openTeleport(currentSeed, onPick, onClose) {
+    this.onTeleportClose = onClose;
+    $('teleport').classList.remove('hidden');
+    const targets = building.teleportTargets(currentSeed);
+    $('teleport-list').innerHTML = targets.length
+      ? targets.map((b) => `<div class="tp-row">
+          <div><b>${b.name}</b><span>${b.planetName} · ${b.systemName} · ${b.parts.length} parts</span></div>
+          <button data-tp="${b.planetSeed}">Teleport</button>
+        </div>`).join('')
+      : '<div class="empty">No other bases with a teleporter yet. Build one somewhere else.</div>';
+    $('teleport-list').querySelectorAll('[data-tp]').forEach((btn) => {
+      btn.onclick = () => {
+        const base = building.allBases().find((b) => String(b.planetSeed) === btn.dataset.tp);
+        this.closeTeleport();
+        onPick(base);
+      };
+    });
+  },
+  closeTeleport() {
+    $('teleport').classList.add('hidden');
+    this.onTeleportClose?.();
+  },
+
+  // ---------------------------------------------------------- seeds
+  openSeeds(part, onClose) {
+    this.onSeedsClose = onClose;
+    $('seeds').classList.remove('hidden');
+    $('seed-list').innerHTML = Object.entries(building.CROPS).map(([k, c]) => {
+      const cost = Object.entries(c.cost).map(([r, v]) => `${v} ${r}`).join(' + ');
+      const out = Object.entries(c.yield).map(([r, v]) => `${v} ${r}`).join(' + ');
+      const ok = (state.inventory.carbon || 0) >= (c.cost.carbon || 0);
+      return `<div class="recipe ${ok ? '' : 'locked'}">
+        <div class="r-head">${c.label}</div>
+        <div class="r-desc">Matures in ${Math.round(c.grow / 60)} min · yields ${out}</div>
+        <div class="r-cost">${cost}</div>
+        <button data-seed="${k}" ${ok ? '' : 'disabled'}>Plant</button>
+      </div>`;
+    }).join('');
+    $('seed-list').querySelectorAll('[data-seed]').forEach((btn) => {
+      btn.onclick = () => {
+        if (building.plant(part.record, btn.dataset.seed)) {
+          this.log(`${building.CROPS[btn.dataset.seed].label} planted`, 'good');
+          this.closeSeeds();
+        } else this.log('Cannot plant that', 'bad');
+      };
+    });
+  },
+  closeSeeds() {
+    $('seeds').classList.add('hidden');
+    this.onSeedsClose?.();
   },
 
   missionDone(m) {
@@ -368,6 +507,34 @@ export const ui = {
     ];
     $('anomaly-exchange').innerHTML = exchange.map((e, i) => `
       <div class="buy-row"><span>${e.label}</span><button data-ex="${i}">Accept</button></div>`).join('');
+
+    $('anomaly-goods').innerHTML = `
+      <div class="buy-row">
+        <span>Exocraft Rover — summonable planetside vehicle</span>
+        <button data-good="exocraft" ${state.exocraftOwned ? 'disabled' : ''}>
+          ${state.exocraftOwned ? 'OWNED' : '400 nanites'}
+        </button>
+      </div>
+      <div class="buy-row">
+        <span>Atlas Seed appraisal — trade a seed for 40,000 units</span>
+        <button data-good="seed" ${state.story.seeds > 0 ? '' : 'disabled'}>Trade</button>
+      </div>`;
+    $('anomaly-goods').querySelectorAll('[data-good]').forEach((btn) => {
+      btn.onclick = () => {
+        if (btn.dataset.good === 'exocraft') {
+          if (state.nanites < 400) return this.log('Not enough nanites', 'bad');
+          state.nanites -= 400;
+          state.exocraftOwned = true;
+          this.log('EXOCRAFT ACQUIRED — press V on any planet to summon it', 'good');
+        } else {
+          if (state.story.seeds <= 0) return;
+          state.story.seeds--;
+          state.units += 40000;
+          this.log('Atlas Seed appraised — +40,000 units', 'good');
+        }
+        this.renderAnomaly();
+      };
+    });
 
     const visited = state.visitedGalaxies.length;
     $('anomaly-log').innerHTML = `
@@ -510,6 +677,37 @@ export const ui = {
           <span>${d.type}</span>
         </div>`).join('')
       : '<div class="empty">No discoveries logged. Go find something.</div>';
+    $('milestone-list').innerHTML = story.MILESTONES.map((m) => {
+      const v = m.get();
+      const tier = story.milestoneTier(m);
+      const next = m.tiers[tier] ?? m.tiers[m.tiers.length - 1];
+      const pct = Math.min(100, (v / next) * 100);
+      return `<div class="mission">
+        <div class="m-title">${m.label} <span class="pips">${'▮'.repeat(tier)}${'▯'.repeat(m.tiers.length - tier)}</span></div>
+        <div class="m-desc">${m.desc}: ${v.toLocaleString()} / ${next.toLocaleString()}</div>
+        <div class="m-bar"><i style="width:${pct}%"></i></div>
+      </div>`;
+    }).join('');
+
+    $('story-list').innerHTML = story.STEPS.map((st, i) => {
+      const done = i < state.story.step;
+      const cur = i === state.story.step;
+      return `<div class="mission ${done ? 'done' : ''}" style="${cur ? 'border-left:2px solid var(--accent);padding-left:10px' : ''}">
+        <div class="m-title">${done ? '✓ ' : cur ? '▶ ' : ''}${st.title}</div>
+        <div class="m-desc">${st.objective}${done ? ' — complete' : cur ? ` · ${st.hint}` : ''}</div>
+        ${done ? `<div class="m-foot">${st.lore}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    $('language-list').innerHTML = Object.entries(aliens.RACES).map(([k, race]) => {
+      const known = state.words[k] || [];
+      return `<div class="mission">
+        <div class="m-title" style="color:${race.color}">${race.label} — ${aliens.standingTitle(k)} (${state.standing[k] || 0})</div>
+        <div class="m-desc">${race.blurb}</div>
+        <div class="m-foot">${known.length ? known.join(' · ') : 'no words learned yet'} (${known.length}/${race.words.length})</div>
+      </div>`;
+    }).join('');
+
     $('discovery-list').querySelectorAll('[data-rename]').forEach((el) => {
       el.onchange = () => {
         renameDiscovery(el.dataset.rename, el.value);
@@ -553,6 +751,7 @@ export const ui = {
     $('trade-market').innerHTML = `<table><thead><tr><th>Resource</th><th>Held</th><th>Unit price</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 
     const wcPrice = Math.round(RESOURCES.warpcell.value * (econ.buy || 1));
+    const stock = Object.entries(RESOURCES).filter(([k]) => k !== 'warpcell').slice(0, 6);
     $('trade-buy').innerHTML = `
       <div class="buy-row">
         <span>Warp Cell — ${wcPrice} units</span>
@@ -561,7 +760,13 @@ export const ui = {
       <div class="buy-row">
         <span>Full repair &amp; refuel — 800 units</span>
         <button data-buy="repair">Buy</button>
-      </div>`;
+      </div>
+      <div class="panel-title" style="margin-top:12px">Buy stock (local prices)</div>
+      ${stock.map(([k, r]) => {
+        const price = Math.round(r.value * econ.buy * (econ.wants.includes(k) ? 1.3 : 0.95));
+        return `<div class="buy-row"><span><span class="dot" style="background:${r.color}"></span>${r.label} — ${price} u each</span>
+          <button data-stock="${k}" data-price="${price}">Buy 25</button></div>`;
+      }).join('')}`;
 
     $('trade-upgrades').innerHTML = Object.entries(UPGRADES).map(([k, up]) => {
       const rank = state.upgrades[k] || 0;
@@ -643,6 +848,75 @@ export const ui = {
       };
     });
 
+    // ---- fleet
+    $('fleet-capital').innerHTML = Object.entries(fleet.FREIGHTERS).map(([k, def]) => {
+      const owned = state.freighter?.class === k;
+      return `<div class="shipcard ${owned ? 'active' : ''}">
+        <div class="s-head">${def.label}</div>
+        <div class="s-desc">${def.desc}</div>
+        <div class="s-stats"><span>${def.slots} frigate berths</span><span>+900 cargo</span></div>
+        <button data-freighter="${k}" ${owned ? 'disabled' : ''}>
+          ${owned ? 'In service' : def.price.toLocaleString() + ' units'}
+        </button>
+      </div>`;
+    }).join('');
+
+    const berths = state.freighter ? state.freighter.slots : 0;
+    $('fleet-frigates').innerHTML = `
+      ${state.freighter ? `<div class="buy-row"><span>Flagship <b>${state.freighter.name}</b> · ${state.frigates.length}/${berths} berths filled</span></div>` : '<div class="empty">Buy a capital ship to command frigates.</div>'}
+      ${state.frigates.map((f) => {
+        const prog = Math.round(fleet.expeditionProgress(f) * 100);
+        return `<div class="mission-row">
+          <div><b>${f.name}</b><span>${fleet.FRIGATE_TYPES[f.type].label} · rating ${'★'.repeat(f.rating)} · ${f.status}${f.status === 'away' ? ` (${prog}%)` : ''}</span></div>
+          ${f.status === 'docked' ? `<button data-send="${f.id}">Send (3 min)</button>` : ''}
+          ${f.status === 'returned' ? `<button data-collect="${f.id}">Collect</button>` : ''}
+        </div>`;
+      }).join('')}
+      ${state.freighter && state.frigates.length < berths ? `<div class="panel-title" style="margin-top:10px">Hire a frigate</div>` +
+        Object.entries(fleet.FRIGATE_TYPES).map(([k, d]) =>
+          `<div class="buy-row"><span>${d.label} frigate — pays in ${d.pays}</span>
+            <button data-hire="${k}">${d.price.toLocaleString()} units</button></div>`).join('') : ''}`;
+
+    $('trade').querySelectorAll('[data-freighter]').forEach((btn) => {
+      btn.onclick = () => {
+        const res = fleet.buyFreighter(btn.dataset.freighter);
+        this.log(res === 'ok' ? `Capital ship acquired: ${state.freighter.name}`
+          : res === 'poor' ? 'Not enough units' : 'Already in service', res === 'ok' ? 'good' : 'bad');
+        this.renderTrade();
+      };
+    });
+    $('trade').querySelectorAll('[data-hire]').forEach((btn) => {
+      btn.onclick = () => {
+        const res = fleet.buyFrigate(btn.dataset.hire);
+        this.log(res === 'ok' ? 'Frigate hired' : res === 'poor' ? 'Not enough units'
+          : res === 'full' ? 'No free berths' : 'You need a capital ship first', res === 'ok' ? 'good' : 'bad');
+        this.renderTrade();
+      };
+    });
+    $('trade').querySelectorAll('[data-send]').forEach((btn) => {
+      btn.onclick = () => { fleet.sendExpedition(btn.dataset.send, 3); this.log('Expedition launched — 3 minutes out', 'good'); this.renderTrade(); };
+    });
+    $('trade').querySelectorAll('[data-collect]').forEach((btn) => {
+      btn.onclick = () => {
+        const r = fleet.collect(btn.dataset.collect);
+        if (r) this.log(`Expedition returned — +${r.units.toLocaleString()} units${r.nanites ? `, +${r.nanites} nanites` : ''}${r.items.map(([k, v]) => `, +${v} ${k}`).join('')}`, 'good');
+        this.renderTrade();
+      };
+    });
+
+    // ---- station locals
+    const enc = aliens.makeEncounter(sys.seed);
+    const raceStats = Object.entries(aliens.RACES).map(([k, race]) =>
+      `<div class="buy-row"><span style="color:${race.color}">${race.label}</span>
+        <span>${aliens.standingTitle(k)} · ${(state.words[k] || []).length} words</span></div>`).join('');
+    $('trade-npc').innerHTML = `
+      <div class="buy-row"><span>A <b style="color:${enc.race.color}">${enc.race.label}</b> trader waves you over.</span>
+        <button data-talk="1">Talk</button></div>
+      <div class="panel-title" style="margin-top:12px">Standing</div>${raceStats}`;
+    $('trade-npc').querySelectorAll('[data-talk]').forEach((btn) => {
+      btn.onclick = () => this.openDialogue(enc, () => this.renderTrade());
+    });
+
     $('trade-units').textContent = Math.floor(state.units).toLocaleString();
 
     $('trade').querySelectorAll('[data-sell]').forEach((btn) => {
@@ -655,6 +929,17 @@ export const ui = {
         state.inventory[k] -= amt;
         state.units += amt * price;
         this.log(`Sold ${amt} ${RESOURCES[k].label} for ${(amt * price).toLocaleString()} units`, 'good');
+        this.renderTrade();
+      };
+    });
+    $('trade').querySelectorAll('[data-stock]').forEach((btn) => {
+      btn.onclick = () => {
+        const k = btn.dataset.stock;
+        const price = Number(btn.dataset.price) * 25;
+        if (state.units < price) return this.log('Not enough units', 'bad');
+        state.units -= price;
+        const got = addResourceSafe(k, 25);
+        this.log(`Bought ${got} ${RESOURCES[k].label} for ${price.toLocaleString()} units`, 'good');
         this.renderTrade();
       };
     });

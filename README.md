@@ -18,6 +18,36 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
                              # drives thousands of frames, asserts zero errors
 ```
 
+## The "everything" update
+
+* **Base building** — eight part types (habitat pods, storage containers, signal beacons,
+  hydroponic trays, solar panels, teleporters, floodlights, walls) placed with a ghost
+  preview in build mode (`B`). Bases persist per planet in your save, storage containers
+  raise your stack limit, habitats restore life support, solar panels trickle-charge your
+  shield, and beacons show up on your compass.
+* **Base teleporter network** — build teleporters on two worlds and hop between them
+  instantly, across systems and even galaxies.
+* **Farming** — plant five crop types in hydroponic trays. They grow in real time
+  (3–7 minutes), visibly sprouting, and pay out resources when harvested.
+* **Terrain manipulator** — `Z` digs, `X` raises. Deformations are stored per planet,
+  folded into the height function, and the affected chunks rebuild immediately.
+* **Exocraft rover** — buy one at the Anomaly for nanites, summon it anywhere with `V`,
+  board with `F`, and drive with proper suspension, boost and wheel spin.
+* **Crashed starships** — find wrecks planetside, pay the repair bill in salvage, and
+  claim them as new ships with randomised stats that join your fleet.
+* **Three alien races** — Gek, Korvax and Vy'keen, with standing, procedural dialogue
+  encounters at outposts and stations, branching choices, and a **language** you learn
+  one word at a time (24 words to find).
+* **Capital freighters & frigate expeditions** — buy a capital ship, hire up to five
+  frigates, and send them on real-time expeditions that return with units, nanites and cargo.
+* **The Atlas Path** — a seven-step story chain with lore, objectives tracked on the HUD,
+  and Atlas Interfaces floating in deep space that give you Atlas Seeds.
+* **Milestones** — eight journey achievements with four tiers each and unit payouts.
+* **Nutrient processor** — four cooked meals granting timed buffs: hazard immunity,
+  jetpack efficiency, mining speed and shield capacity.
+* **Buy-side market** — stations now sell stock as well as buy it, so you can run
+  genuine trade routes between economies.
+
 ## The galaxies update
 
 * **Sixteen named galaxies** — Euclid-VII, Hilbert Dimension, Calypso, Hesperius, Hyades,
@@ -125,6 +155,9 @@ and buy hyperdrive coils to reach further stars. Everything autosaves to localSt
 | **On foot** | `WASD` move · mouse look · `Space` jump / jetpack · `Shift` sprint · left-click mining beam |
 | **Interact** | Hold `E` to land, dock or launch · hold `F` to scan planets, lifeforms and ruins |
 | **On-foot combat** | Right-click boltcaster · sentinels escalate as you mine |
+| **Building** | `B` build mode · `[` `]` cycle parts · left-click place · `X` demolish |
+| **Terraform** | `Z` dig · `X` raise (outside build mode) |
+| **Exocraft** | `V` summon · `F` board/leave · WASD drive · Shift boost |
 | **Navigation** | `M` galaxy map · `Enter` warp / next hop · `G` intergalactic view · `Q`/`E` rotate · wheel zoom |
 | **Utility** | `C` refiner · `R` recharge hazard · `G` refuel ship / feed fauna |
 | **System** | `Tab` journey log · `H` photo mode · `Ctrl+S` save · `P` exposure · `Esc` release mouse |
@@ -137,7 +170,11 @@ styles.css        the whole interface
 src/main.js       renderer, post-processing, mode switching, game loop
 src/universe.js   galaxy / system / planet / biome / economy generation
 src/missions.js   procedural contracts and progress tracking
-src/crafting.js   refiner recipes
+src/crafting.js   refiner recipes and cooked buffs
+src/building.js   base parts, farming, teleport network
+src/aliens.js     races, standing, language, dialogue encounters
+src/fleet.js      capital ships and frigate expeditions
+src/story.js      the Atlas Path and journey milestones
 src/space.js      star system flight, combat, docking
 src/surface.js    planet surface, terrain streaming, weather, creatures, ruins
 src/map.js        galactic map + hyperdrive jumps

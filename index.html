@@ -52,6 +52,18 @@
     <div id="mission-list"></div>
   </div>
 
+  <div id="build-hud" class="panel hidden">
+    <div class="panel-title">Build Mode</div>
+    <div id="build-part"></div>
+    <div class="build-keys"><kbd>[</kbd> <kbd>]</kbd> cycle · <kbd>LMB</kbd> place · <kbd>X</kbd> demolish · <kbd>B</kbd> exit</div>
+  </div>
+
+  <div id="objective" class="panel hidden">
+    <div class="panel-title">Atlas Path</div>
+    <div id="objective-title"></div>
+    <div id="objective-text"></div>
+  </div>
+
   <div id="sentinel-alert" class="hidden"><span>SENTINELS</span><i id="sentinel-pips"></i></div>
 
   <div id="target-info" class="hidden">
@@ -88,6 +100,8 @@
       <div><b>On foot</b><span>WASD move · Space jump/jetpack · Shift sprint · left-click mining beam</span></div>
       <div><b>Scanning</b><span>Hold <kbd>F</kbd> on worlds, lifeforms and alien ruins for units &amp; loot</span></div>
       <div><b>On-foot combat</b><span>Right-click boltcaster · sentinels escalate as you strip a planet</span></div>
+      <div><b>Build &amp; terraform</b><span><kbd>B</kbd> build mode · <kbd>Z</kbd>/<kbd>X</kbd> dig and raise terrain · farm, store, teleport</span></div>
+      <div><b>Exocraft &amp; wrecks</b><span><kbd>V</kbd> summon rover · <kbd>F</kbd> board · repair crashed ships to claim them</span></div>
       <div><b>Wormholes &amp; portals</b><span>Fly into a wormhole to cross the galaxy · step through ancient portals on foot</span></div>
       <div><b>Tools</b><span><kbd>M</kbd> map · <kbd>C</kbd> refiner · <kbd>R</kbd> hazard · <kbd>G</kbd> feed fauna · <kbd>H</kbd> photo · <kbd>Tab</kbd> log</span></div>
     </div>
@@ -120,6 +134,8 @@
       <button class="tab" data-tab="tech">Technology</button>
       <button class="tab" data-tab="missions">Mission Board</button>
       <button class="tab" data-tab="ships">Shipyard</button>
+      <button class="tab" data-tab="fleet">Fleet</button>
+      <button class="tab" data-tab="npc">Locals</button>
     </div>
     <div class="trade-body">
       <div class="tab-page" data-page="market">
@@ -146,8 +162,50 @@
         <div class="panel-title">Shipyard</div>
         <div id="trade-ships" class="ship-grid"></div>
       </div>
+      <div class="tab-page hidden" data-page="fleet">
+        <div class="panel-title">Capital Ships</div>
+        <div id="fleet-capital" class="ship-grid"></div>
+        <div class="panel-title" style="margin-top:14px">Frigate Berths &amp; Expeditions</div>
+        <div id="fleet-frigates"></div>
+      </div>
+      <div class="tab-page hidden" data-page="npc">
+        <div class="panel-title">Station Locals</div>
+        <div id="trade-npc"></div>
+      </div>
     </div>
     <div class="btn-row"><button id="btn-trade-close">Undock</button></div>
+  </div>
+</div>
+
+<!-- ============ ALIEN DIALOGUE ============ -->
+<div id="dialogue" class="overlay hidden">
+  <div class="dialogue-inner">
+    <div class="d-race" id="dialogue-race"></div>
+    <h2 id="dialogue-greeting"></h2>
+    <p class="blurb" id="dialogue-prompt"></p>
+    <div id="dialogue-options" class="dialogue-options"></div>
+    <div id="dialogue-result" class="dialogue-result"></div>
+    <div class="btn-row"><button id="btn-dialogue-close">Leave</button></div>
+  </div>
+</div>
+
+<!-- ============ TELEPORT NETWORK ============ -->
+<div id="teleport" class="overlay hidden">
+  <div class="craft-inner" style="width:min(660px,94vw)">
+    <h2>TELEPORT NETWORK</h2>
+    <div class="map-sub">Instant travel between your bases</div>
+    <div id="teleport-list" class="teleport-list"></div>
+    <div class="btn-row"><button id="btn-teleport-close">Close</button></div>
+  </div>
+</div>
+
+<!-- ============ SEED PICKER ============ -->
+<div id="seeds" class="overlay hidden">
+  <div class="craft-inner" style="width:min(720px,94vw)">
+    <h2>SEED STORAGE</h2>
+    <div class="map-sub">Choose a crop for this hydroponic tray</div>
+    <div id="seed-list" class="craft-grid"></div>
+    <div class="btn-row"><button id="btn-seeds-close">Close</button></div>
   </div>
 </div>
 
@@ -163,6 +221,8 @@
     <div id="anomaly-drives" class="drive-grid"></div>
     <div class="panel-title" style="margin-top:14px">Exchange</div>
     <div id="anomaly-exchange"></div>
+    <div class="panel-title" style="margin-top:14px">Exotic Goods</div>
+    <div id="anomaly-goods"></div>
     <div class="panel-title" style="margin-top:14px">Traveller Record</div>
     <div class="map-info" id="anomaly-log" style="min-width:0;margin:0"></div>
     <div class="btn-row" style="margin-top:16px"><button id="btn-anomaly-close">Undock</button></div>
@@ -196,6 +256,15 @@
   <div class="pause-inner">
     <h2>JOURNEY LOG</h2>
     <div id="disc-summary" class="disc-summary"></div>
+    <div class="log-tabs">
+      <button class="tab active" data-log="discoveries">Discoveries</button>
+      <button class="tab" data-log="milestones">Milestones</button>
+      <button class="tab" data-log="story">Atlas Path</button>
+      <button class="tab" data-log="language">Language</button>
+    </div>
+    <div id="milestone-list" class="hidden"></div>
+    <div id="story-list" class="hidden"></div>
+    <div id="language-list" class="hidden"></div>
     <div id="discovery-list"></div>
     <div class="btn-row">
       <button id="btn-resume">Resume</button>

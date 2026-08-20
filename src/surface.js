@@ -3,12 +3,15 @@ import * as THREE from 'three';
 import { Noise } from './noise.js';
 import { RNG, hash3 } from './rng.js';
 import { input } from './input.js';
-import { state, stats, addResource, discover, spendResources, hasResources } from './state.js';
+import { state, stats, addResource, discover, spendResources, hasResources, hasBuff } from './state.js';
 import { ui } from './ui.js';
 import {
   buildShip, radialSprite, buildMonolith, buildCrashedShip, buildOutpost,
   makeStarfield, buildSentinel, buildAurora, buildPortal,
+  buildPart, buildCrop, buildExocraft,
 } from './assets3d.js';
+import * as building from './building.js';
+import * as aliens from './aliens.js';
 import * as missions from './missions.js';
 import { makeName, loreLine } from './universe.js';
 import { audio } from './audio.js';
@@ -49,6 +52,28 @@ export class SurfaceMode {
     this.portal = null;
     this.portalRequest = null;
     this.portalHold = 0;
+
+    // base building
+    this.buildMode = false;
+    this.buildType = 'habitat';
+    this.baseParts = [];        // { record, mesh, crop? }
+    this.ghost = null;
+    this.teleportRequest = null;
+    this.encounterRequest = null;
+
+    // terrain manipulator
+    this.edits = [];
+    this.editCooldown = 0;
+
+    // exocraft
+    this.exocraft = null;
+    this.inExocraft = false;
+    this.exoVel = new THREE.Vector3();
+    this.exoYaw = 0;
+
+    // claimable wrecks
+    this.wreck = null;
+    this.wreckRequest = null;
     this.bob = 0;
     this.stepTimer = 0;
 
@@ -261,12 +286,59 @@ export class SurfaceMode {
       this.portal = portal;
     }
 
+    // terrain the player has dug or raised here before
+    this.edits = state.terrainEdits[planet.seed] || [];
+
+    // rebuild any base the player owns on this world
+    for (const bp of this.baseParts) this.scene.remove(bp.mesh);
+    this.baseParts = [];
+    const base = building.baseFor(planet);
+    if (base) for (const record of base.parts) this.spawnPart(record);
+
+    // exocraft (owned, summonable)
+    if (this.exocraft) { this.scene.remove(this.exocraft); this.exocraft = null; }
+    this.inExocraft = false;
+
+    // a claimable crashed ship on some worlds
+    if (this.wreck) { this.scene.remove(this.wreck); this.wreck = null; }
+    if (rng.chance(0.3)) {
+      const wa = rng.float(0, Math.PI * 2);
+      const wd = rng.float(140, 340);
+      const wx = this.pos.x + Math.cos(wa) * wd;
+      const wz = this.pos.z + Math.sin(wa) * wd;
+      const wreck = buildCrashedShip(rng);
+      wreck.position.set(wx, this.height(wx, wz), wz);
+      const classes = ['fighter', 'hauler', 'explorer', 'shuttle'];
+      wreck.userData = {
+        claim: true,
+        shipKey: `wreck_${planet.seed}`,
+        base: rng.pick(classes),
+        cost: { chromatic: rng.int(30, 70), ferrite: rng.int(80, 160), platinum: rng.int(20, 45) },
+        claimed: !!state.customShips[`wreck_${planet.seed}`],
+      };
+      this.scene.add(wreck);
+      this.wreck = wreck;
+    }
+
     this.spawnCreatures();
     state.visitedPlanets[planet.seed] = true;
   }
 
   // -------------------------------------------------- terrain
   height(x, z) {
+    let edit = 0;
+    const edits = this.edits;
+    for (let i = 0; i < edits.length; i++) {
+      const e = edits[i];
+      const dx = x - e.x, dz = z - e.z;
+      const d2 = dx * dx + dz * dz;
+      const r2 = e.r * e.r;
+      if (d2 < r2) edit += e.dh * (1 - d2 / r2) * (1 - d2 / r2);
+    }
+    return this.baseHeight(x, z) + edit;
+  }
+
+  baseHeight(x, z) {
     const n = this.noise;
     const base = n.fbm2(x * 0.0016, z * 0.0016, 5) * 44;
     const mask = Math.max(0, n.noise2D(x * 0.00035 + 40, z * 0.00035 - 20));
@@ -619,6 +691,219 @@ export class SurfaceMode {
     }
   }
 
+  // -------------------------------------------------- base building
+  spawnPart(record) {
+    const mesh = buildPart(record.type, this.crystalColor.getStyle());
+    mesh.position.set(record.x, record.y, record.z);
+    mesh.rotation.y = record.rot || 0;
+    this.scene.add(mesh);
+    const entry = { record, mesh, cropMesh: null };
+    this.baseParts.push(entry);
+    if (record.type === 'farm' && record.crop) this.syncCrop(entry);
+    return entry;
+  }
+
+  syncCrop(entry) {
+    if (entry.cropMesh) { entry.mesh.remove(entry.cropMesh); entry.cropMesh = null; }
+    if (!entry.record.crop) return;
+    const grown = building.cropProgress(entry.record);
+    const crop = buildCrop(this.floraColor2.getStyle(), 0.4 + grown * 0.9);
+    crop.position.y = 1.3;
+    entry.mesh.add(crop);
+    entry.cropMesh = crop;
+  }
+
+  toggleBuildMode() {
+    this.buildMode = !this.buildMode;
+    if (this.ghost) { this.scene.remove(this.ghost); this.ghost = null; }
+    if (this.buildMode) {
+      this.ghost = buildPart(this.buildType, '#63e6ff');
+      this.ghost.traverse((o) => {
+        if (o.isMesh) {
+          o.material = o.material.clone();
+          o.material.transparent = true;
+          o.material.opacity = 0.45;
+          o.castShadow = false;
+        }
+      });
+      this.scene.add(this.ghost);
+      ui.log('BUILD MODE — left-click to place · [ ] to cycle parts · X to demolish · B to exit', 'good');
+    }
+    ui.buildHud(this.buildMode ? this.buildType : null);
+  }
+
+  cycleBuildType(dir) {
+    const keys = Object.keys(building.PARTS);
+    const i = keys.indexOf(this.buildType);
+    this.buildType = keys[(i + dir + keys.length) % keys.length];
+    if (this.ghost) { this.scene.remove(this.ghost); this.ghost = null; }
+    this.ghost = buildPart(this.buildType, '#63e6ff');
+    this.ghost.traverse((o) => {
+      if (o.isMesh) {
+        o.material = o.material.clone();
+        o.material.transparent = true;
+        o.material.opacity = 0.45;
+        o.castShadow = false;
+      }
+    });
+    this.scene.add(this.ghost);
+    ui.buildHud(this.buildType);
+  }
+
+  buildSpot() {
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const reach = 12;
+    const p = this.pos.clone().addScaledVector(dir, reach);
+    p.y = this.height(p.x, p.z);
+    return p;
+  }
+
+  updateBuildMode(dt) {
+    if (!this.buildMode || !this.ghost) return;
+    const spot = this.buildSpot();
+    this.ghost.position.copy(spot);
+    this.ghost.rotation.y = this.yaw + Math.PI;
+    const affordable = building.canBuild(this.buildType);
+    this.ghost.traverse((o) => {
+      if (o.isMesh) o.material.color.set(affordable ? '#9dffc4' : '#ff7676');
+    });
+
+    if (input.mouseDown && this.editCooldown <= 0) {
+      this.editCooldown = 0.35;
+      const rec = building.build(this.planet, this.system, this.buildType, spot, this.yaw + Math.PI);
+      if (rec) {
+        this.spawnPart(rec);
+        ui.log(`${building.PARTS[this.buildType].label} built`, 'good');
+        audio.pickup();
+      } else {
+        ui.log('Not enough materials', 'bad');
+        audio.error();
+      }
+    }
+    if (input.down('KeyX') && this.editCooldown <= 0) {
+      this.editCooldown = 0.35;
+      let nearest = null, nd = 14;
+      for (const bp of this.baseParts) {
+        const d = bp.mesh.position.distanceTo(this.pos);
+        if (d < nd) { nd = d; nearest = bp; }
+      }
+      if (nearest && building.demolish(this.planet, nearest.record.id)) {
+        this.scene.remove(nearest.mesh);
+        this.baseParts.splice(this.baseParts.indexOf(nearest), 1);
+        ui.log('Part demolished — half materials refunded', 'warn');
+      }
+    }
+  }
+
+  updateBaseParts(dt) {
+    let shelter = false;
+    let solar = false;
+    for (const bp of this.baseParts) {
+      const d = bp.mesh.position.distanceTo(this.pos);
+      if (bp.record.type === 'habitat' && d < 9) shelter = true;
+      if (bp.record.type === 'solar' && d < 18) solar = true;
+      if (bp.record.type === 'teleporter') {
+        bp.mesh.userData.field.material.opacity = 0.25 + Math.sin(this.time * 2) * 0.12;
+      }
+      if (bp.record.type === 'farm' && bp.record.crop) {
+        const grown = building.cropProgress(bp.record);
+        if (bp.cropMesh) {
+          const target = 0.4 + grown * 0.9;
+          bp.cropMesh.scale.setScalar(target);
+        } else this.syncCrop(bp);
+      }
+    }
+    if (shelter) {
+      state.life = Math.min(100, state.life + dt * 14);
+      state.hazardProtection = Math.min(100, state.hazardProtection + dt * 18);
+    }
+    if (solar) state.suitShield = Math.min(stats.suitShieldMax, state.suitShield + dt * 5);
+    this.inShelter = shelter;
+  }
+
+  // -------------------------------------------------- terrain manipulator
+  applyEdit(dh) {
+    const spot = this.buildSpot();
+    if (!state.terrainEdits[this.planet.seed]) state.terrainEdits[this.planet.seed] = [];
+    this.edits = state.terrainEdits[this.planet.seed];
+    // merge into a nearby edit if there is one, so the list stays small
+    const near = this.edits.find((e) => Math.hypot(e.x - spot.x, e.z - spot.z) < 4);
+    if (near) {
+      near.dh = THREE.MathUtils.clamp(near.dh + dh, -26, 26);
+    } else {
+      this.edits.push({ x: spot.x, z: spot.z, r: 9, dh });
+      if (this.edits.length > 220) this.edits.shift();
+    }
+    // rebuild the chunks around the edit
+    const cx = Math.round(spot.x / CHUNK), cz = Math.round(spot.z / CHUNK);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const key = this.chunkKey(cx + dx, cz + dz);
+        const ch = this.chunks.get(key);
+        if (ch) {
+          const ring = ch.ring;
+          this.removeChunk(key);
+          this.buildChunk(cx + dx, cz + dz, ring);
+        }
+      }
+    }
+    audio.blip(140 + Math.random() * 60, 0.06, 'sine', 0.12);
+  }
+
+  // -------------------------------------------------- exocraft
+  summonExocraft() {
+    if (!state.exocraftOwned) { ui.log('You do not own an Exocraft — buy one at a Space Anomaly', 'bad'); return; }
+    if (!this.exocraft) {
+      this.exocraft = buildExocraft();
+      this.scene.add(this.exocraft);
+    }
+    const dir = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const p = this.pos.clone().addScaledVector(dir, 6.5);
+    this.exocraft.position.set(p.x, this.height(p.x, p.z) + 1, p.z);
+    this.exoYaw = this.yaw;
+    this.exoVel.set(0, 0, 0);
+    ui.log('EXOCRAFT SUMMONED — press F near it to drive', 'good');
+    audio.sweep(200, 700, 0.5, 'sawtooth', 0.22);
+  }
+
+  updateExocraft(dt) {
+    if (!this.exocraft) return;
+    const ex = this.exocraft;
+
+    if (!this.inExocraft) {
+      const g = this.height(ex.position.x, ex.position.z);
+      ex.position.y += ((g + 1) - ex.position.y) * Math.min(1, dt * 5);
+      return;
+    }
+
+    // drive
+    const forward = new THREE.Vector3(-Math.sin(this.exoYaw), 0, -Math.cos(this.exoYaw));
+    let throttle = 0;
+    if (input.down('KeyW')) throttle += 1;
+    if (input.down('KeyS')) throttle -= 0.6;
+    const boost = input.down('ShiftLeft') || input.down('ShiftRight');
+    const turn = (input.down('KeyA') ? 1 : 0) - (input.down('KeyD') ? 1 : 0);
+    this.exoYaw += turn * dt * 1.5 * (0.4 + Math.min(1, this.exoVel.length() / 20));
+
+    const accel = throttle * (boost ? 46 : 24);
+    this.exoVel.addScaledVector(forward, accel * dt);
+    this.exoVel.multiplyScalar(1 - Math.min(1, dt * 1.1));
+    if (input.down('Space')) this.exoVel.y = 9;
+    this.exoVel.y -= this.gravity * dt;
+
+    ex.position.addScaledVector(this.exoVel, dt);
+    const ground = this.height(ex.position.x, ex.position.z) + 1;
+    if (ex.position.y <= ground) { ex.position.y = ground; this.exoVel.y = 0; }
+    ex.rotation.y = this.exoYaw;
+    const speed = Math.hypot(this.exoVel.x, this.exoVel.z);
+    for (const w of ex.userData.wheels) w.rotation.x -= speed * dt * 0.8;
+
+    // the player rides along
+    this.pos.copy(ex.position).add(new THREE.Vector3(0, 2.6, 0));
+    this.vel.set(0, 0, 0);
+    audio.hum(Math.min(0.6, speed / 40));
+  }
+
   // -------------------------------------------------- sentinels & combat
   raiseWanted(amount, reason) {
     const before = Math.floor(this.wanted);
@@ -947,7 +1232,11 @@ export class SurfaceMode {
     this.camera.rotateX(this.pitch);
     this.camera.rotateZ(Math.sin(this.bob) * 0.006 * Math.min(1, horizSpeed / 8));
 
+    this.editCooldown = Math.max(0, this.editCooldown - dt);
     this.updateSky(dt);
+    this.updateBuildMode(dt);
+    this.updateExocraft(dt);
+    this.updateBaseParts(dt);
     this.ensureChunks();
     this.updateCreatures(dt);
     this.updateSentinels(dt);
@@ -1046,6 +1335,102 @@ export class SurfaceMode {
       }
     }
 
+    // terrain manipulator
+    if (!this.buildMode && this.editCooldown <= 0) {
+      if (input.down('KeyZ')) { this.editCooldown = 0.12; this.applyEdit(-3.2); }
+      else if (input.down('KeyX')) { this.editCooldown = 0.12; this.applyEdit(2.6); }
+    }
+
+    // exocraft
+    this.teleportRequest = null;
+    this.encounterRequest = null;
+    this.wreckRequest = null;
+    if (this.exocraft) {
+      const ed = this.exocraft.position.distanceTo(this.pos);
+      if (this.inExocraft) {
+        prompt = 'Press <b>F</b> to leave the Exocraft';
+        if (input.down('KeyF')) {
+          this.inExocraft = false;
+          this.pos.copy(this.exocraft.position).add(new THREE.Vector3(3, 2, 0));
+          input.keys.delete('KeyF');
+        }
+      } else if (ed < 12) {
+        prompt = 'Press <b>F</b> to board the Exocraft';
+        if (input.down('KeyF')) {
+          this.inExocraft = true;
+          this.exoYaw = this.yaw;
+          input.keys.delete('KeyF');
+        }
+      }
+    }
+
+    // base parts: farming, teleporters
+    let nearestPart = null, npd = 8;
+    for (const bp of this.baseParts) {
+      const d = bp.mesh.position.distanceTo(this.pos);
+      if (d < npd) { npd = d; nearestPart = bp; }
+    }
+    if (nearestPart && !prompt) {
+      const rec = nearestPart.record;
+      if (rec.type === 'farm') {
+        if (!rec.crop) {
+          tName = 'HYDROPONIC TRAY';
+          tSub = 'empty · press <b>E</b> to plant';
+          prompt = 'Press <b>E</b> to open the seed list';
+          if (input.down('KeyE')) { this.plantRequest = nearestPart; input.keys.delete('KeyE'); }
+        } else {
+          const grown = building.cropProgress(rec);
+          tName = building.CROPS[rec.crop.key].label.toUpperCase();
+          tSub = grown >= 1 ? 'ready to harvest — press <b>E</b>' : `growing · ${Math.round(grown * 100)}%`;
+          if (grown >= 1) {
+            prompt = 'Press <b>E</b> to harvest';
+            if (input.down('KeyE')) {
+              const got = building.harvest(rec);
+              if (got) { ui.log(`Harvested — ${got}`, 'good'); audio.pickup(); this.syncCrop(nearestPart); }
+              input.keys.delete('KeyE');
+            }
+          }
+        }
+      } else if (rec.type === 'teleporter') {
+        tName = 'BASE TELEPORTER';
+        tSub = 'press <b>E</b> to open the network';
+        prompt = 'Press <b>E</b> for the teleport network';
+        if (input.down('KeyE')) { this.teleportRequest = true; input.keys.delete('KeyE'); }
+      } else if (rec.type === 'habitat') {
+        tName = 'HABITAT POD';
+        tSub = 'life support and hazard protection recharging';
+      }
+    }
+
+    // claimable wreck
+    if (this.wreck && !prompt) {
+      const wd = this.wreck.position.distanceTo(this.pos);
+      if (wd < 16) {
+        const u = this.wreck.userData;
+        const costTxt = Object.entries(u.cost).map(([k, v]) => `${v} ${k}`).join(' + ');
+        tName = u.claimed ? 'SALVAGED WRECK' : 'CRASHED STARSHIP';
+        tSub = u.claimed ? 'already claimed' : `repairable · ${costTxt}`;
+        if (!u.claimed) {
+          prompt = 'Hold <b>E</b> to repair and claim this ship';
+          if (input.down('KeyE')) {
+            this.portalHold += dt;
+            scanPct = Math.min(1, this.portalHold / 1.8);
+            if (this.portalHold > 1.8) {
+              this.portalHold = 0;
+              if (hasResources(u.cost)) {
+                spendResources(u.cost);
+                u.claimed = true;
+                this.wreckRequest = { key: u.shipKey, base: u.base, planet: this.planet.name };
+              } else {
+                ui.log('Not enough materials to repair the wreck', 'bad');
+                audio.error();
+              }
+            }
+          } else this.portalHold = 0;
+        }
+      }
+    }
+
     // ancient portal
     this.portalRequest = null;
     if (this.portal) {
@@ -1092,6 +1477,7 @@ export class SurfaceMode {
             for (const [k, v] of Object.entries(u.loot)) { addResource(k, v); ui.flashSlot(k); }
             ui.log(`${u.name.toUpperCase()} — ${u.lore}`, 'good');
             ui.log(`Salvage: ${Object.entries(u.loot).map(([k, v]) => `+${v} ${k}`).join(' · ')} · +60 nanites`, 'good');
+            if (u.structure === 'outpost') this.encounterRequest = aliens.makeEncounter(this.planet.seed ^ 0x1234);
             audio.discovery();
             for (const m of missions.event('ruin')) ui.missionDone(m);
           }
@@ -1115,7 +1501,7 @@ export class SurfaceMode {
       if (o?.userData?.res) hitProp = { obj: o, point: hits[0].point };
     }
 
-    if (hitProp && !structure) {
+    if (hitProp && !structure && !this.buildMode) {
       const u = hitProp.obj.userData;
       tName = u.label.toUpperCase();
       tSub = `${u.res.toUpperCase()} · ${Math.max(0, Math.round(u.hp * 100))}%`;
@@ -1201,6 +1587,8 @@ export class SurfaceMode {
       planetLabel: 'Planet',
       planet: `${p.name} · ${p.biome.label}`,
       sentinelLevel: Math.floor(this.wanted),
+      exocraft: this.inExocraft,
+      buildMode: this.buildMode,
       conditions: `Hazard: ${p.biome.hazard} · ${p.weather}<br>`
         + `Sentinels: ${p.sentinels} · Gravity: ${p.gravity.toFixed(2)}g<br>`
         + `Local time ${clock} · Altitude ${alt} m<br>`

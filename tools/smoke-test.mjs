@@ -396,6 +396,162 @@ if (portalFound) {
   console.log('portal activated:', !!req, req ? `→ system hash ${req.systemHash % g0.systems.length}, planet ${req.planetIndex}` : '');
 }
 
+// ---- BASES, FARMING, EXOCRAFT, TERRAIN, WRECKS, ALIENS, FLEET, STORY ----
+const building = await import(ROOT + '/src/building.js');
+const aliens = await import(ROOT + '/src/aliens.js');
+const fleet = await import(ROOT + '/src/fleet.js');
+const story = await import(ROOT + '/src/story.js');
+
+ui.mode = 'surface';
+const homeSys = buildSystem(g0.systems[2]);
+const homePlanet = homeSys.planets[0];
+surface.setPlanet(homePlanet, homeSys);
+state.inventory.ferrite = 900; state.inventory.carbon = 900; state.inventory.chromatic = 400;
+state.inventory.platinum = 400; state.inventory.sodium = 400; state.inventory.dihydrogen = 400;
+
+// build one of everything
+let built = 0;
+for (const type of Object.keys(building.PARTS)) {
+  const spot = { x: surface.pos.x + built * 8, y: 0, z: surface.pos.z + 12 };
+  spot.y = surface.height(spot.x, spot.z);
+  const rec = building.build(homePlanet, homeSys, type, spot);
+  if (rec) { surface.spawnPart(rec); built++; }
+}
+console.log('base parts built:', built, '/', Object.keys(building.PARTS).length,
+  '· stack limit now', stats.stackLimit);
+
+// farming
+const farmPart = surface.baseParts.find((b) => b.record.type === 'farm');
+building.plant(farmPart.record, 'starbulb');
+console.log('crop planted:', farmPart.record.crop?.key, '· progress', building.cropProgress(farmPart.record).toFixed(2));
+farmPart.record.crop.planted = Date.now() - 200000;   // fast-forward past maturity
+const harvested = building.harvest(farmPart.record);
+console.log('harvest:', harvested);
+
+// base persists across a revisit
+const otherPlanet = homeSys.planets[1] || homeSys.planets[0];
+surface.setPlanet(otherPlanet, homeSys);
+surface.setPlanet(homePlanet, homeSys);
+console.log('base reloaded on revisit:', surface.baseParts.length, 'parts');
+
+// terrain manipulator
+const beforeH = surface.height(surface.pos.x, surface.pos.z);
+surface.yaw = 0; surface.pitch = -0.4;
+surface.applyEdit(-6);
+surface.applyEdit(-6);
+const spot = surface.buildSpot();
+console.log('terrain dug:', (surface.height(spot.x, spot.z) - surface.baseHeight(spot.x, spot.z)).toFixed(1), 'm delta ·',
+  state.terrainEdits[homePlanet.seed].length, 'edit(s) stored');
+surface.applyEdit(14);
+console.log('terrain raised back to', (surface.height(spot.x, spot.z) - surface.baseHeight(spot.x, spot.z)).toFixed(1), 'm delta');
+
+// exocraft
+state.exocraftOwned = true;
+surface.summonExocraft();
+surface.inExocraft = true;
+input.keys = new Set(['KeyW']);
+const exoStart = surface.exocraft.position.clone();
+for (let i = 0; i < 240; i++) { surface.scene.updateMatrixWorld(true); surface.update(1 / 60); }
+input.keys = new Set();
+console.log('exocraft drove', exoStart.distanceTo(surface.exocraft.position).toFixed(0), 'm · rider position synced:',
+  surface.pos.distanceTo(surface.exocraft.position) < 4);
+surface.inExocraft = false;
+
+// crashed ship claiming
+let wreckPlanet = null;
+let wreckScan = 0;
+outerWreck:
+for (let si = 2; si < 8; si++) {
+  const ws = buildSystem(g0.systems[si]);
+  for (const pl of ws.planets) {
+    wreckScan++;
+    surface.setPlanet(pl, ws);
+    if (surface.wreck) { wreckPlanet = pl; break outerWreck; }
+  }
+}
+if (wreckPlanet) {
+  const u = surface.wreck.userData;
+  state.inventory.chromatic = 300; state.inventory.ferrite = 500; state.inventory.platinum = 300;
+  surface.pos.copy(surface.wreck.position).add({ x: 4, y: 2, z: 0 });
+  input.keys = new Set(['KeyE']);
+  let claim = null;
+  for (let i = 0; i < 240; i++) {
+    surface.scene.updateMatrixWorld(true);
+    surface.update(1 / 60);
+    if (surface.wreckRequest) claim = surface.wreckRequest;
+  }
+  input.keys = new Set();
+  console.log('wreck found on', wreckPlanet.name, '· claim triggered:', !!claim);
+} else console.log('no wreck in this system');
+
+// alien encounters
+const enc = aliens.makeEncounter(12345);
+console.log('encounter:', enc.race.label, '·', enc.prompt.slice(0, 40) + '…');
+// exercise every effect type across every race
+for (let seed = 0; seed < 40; seed++) {
+  const e = aliens.makeEncounter(seed * 7919);
+  for (const opt of e.options) aliens.choose(e, opt);
+}
+console.log('standing:', JSON.stringify(state.standing), '· words learned:',
+  Object.values(state.words).reduce((a, w) => a + w.length, 0));
+ui.openDialogue(enc, () => {});
+window.document.querySelector('#dialogue-options [data-opt]')?.click();
+ui.closeDialogue();
+console.log('dialogue UI ok · result:', window.document.getElementById('dialogue-result').textContent.slice(0, 40));
+
+// fleet
+state.units = 5000000;
+console.log('freighter:', fleet.buyFreighter('capital'), '· name', state.freighter?.name);
+console.log('frigates hired:', ['industrial', 'exploration', 'combat'].map((t) => fleet.buyFrigate(t)).join(','));
+fleet.sendExpedition(state.frigates[0].id, 3);
+state.frigates[0].returnsAt = Date.now() - 10;
+const done = fleet.tick();
+const payout = fleet.collect(state.frigates[0].id);
+console.log('expedition returned:', done.length, '· payout units', payout?.units, '· stack limit', stats.stackLimit);
+
+// story + milestones
+console.log('atlas step:', story.current()?.title, '· of', story.STEPS.length);
+let advanced = 0;
+for (let i = 0; i < 8; i++) { state.story.seeds = 5; state.coreJumps = 1; if (story.check()) advanced++; }
+console.log('story steps advanced:', advanced, '· done:', state.story.done);
+const ms = story.checkMilestones();
+console.log('milestones awarded:', ms.length, ms.slice(0, 3).map((m) => `${m.label} T${m.tier}`).join(', '));
+
+// cooked buffs
+const { hasBuff } = await import(ROOT + '/src/state.js');
+state.inventory.carbon = 500; state.inventory.sodium = 500; state.inventory.dihydrogen = 500; state.inventory.platinum = 500;
+const cooked = crafting.RECIPES.filter((r) => r.cooked);
+for (const r of cooked) crafting.craft(r);
+console.log('cooked meals:', cooked.length, '· active buffs:',
+  ['hazard', 'jetpack', 'mining', 'shield'].filter(hasBuff).join(', '),
+  '· hazard drain now', stats.hazardDrain);
+
+// teleport network
+ui.openTeleport(999, () => {}, () => {});
+console.log('teleport targets listed:', window.document.querySelectorAll('#teleport-list [data-tp]').length);
+ui.closeTeleport();
+
+// station: fleet + locals tabs render
+ui.openTrade(galaxy.systems[0], () => {});
+console.log('fleet cards:', window.document.querySelectorAll('#fleet-capital [data-freighter]').length,
+  '· frigate rows:', window.document.querySelectorAll('#fleet-frigates .mission-row').length,
+  '· buy-stock rows:', window.document.querySelectorAll('#trade-buy [data-stock]').length,
+  '· locals:', window.document.querySelectorAll('#trade-npc [data-talk]').length);
+ui.closeTrade();
+
+// anomaly goods
+state.nanites = 2000;
+ui.openAnomaly(() => {});
+window.document.querySelector('#anomaly-goods [data-good="exocraft"]')?.click();
+ui.closeAnomaly();
+console.log('exocraft purchased:', state.exocraftOwned);
+
+// journey log panes
+ui.renderDiscoveries();
+console.log('log panes — milestones:', window.document.querySelectorAll('#milestone-list .mission').length,
+  '· story:', window.document.querySelectorAll('#story-list .mission').length,
+  '· language:', window.document.querySelectorAll('#language-list .mission').length);
+
 // ---- MAP + SAVE ------------------------------------------------------
 map.show(0);
 map.selected = 5;

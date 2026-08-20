@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import {
   planetTextures, makeStarfield, makeNebula, buildShip, buildPirate,
   buildStation, radialSprite, atmosphereMaterial, buildFreighter,
-  buildCargoPod, buildBlackHole, buildWormhole, buildAnomaly,
+  buildCargoPod, buildBlackHole, buildWormhole, buildAnomaly, buildAtlasInterface,
 } from './assets3d.js';
+import * as story from './story.js';
 import * as missions from './missions.js';
 import { input } from './input.js';
 import { state, stats, addResource, discover } from './state.js';
@@ -119,6 +120,8 @@ export class SpaceMode {
     this.anomaly = null;
     this.wormholeRequest = false;
     this.anomalyRequest = false;
+    this.atlas = null;
+    this.atlasRequest = false;
     this.anomalyHold = 0;
     this.blackHoleRequest = false;
     this.coreRequest = false;
@@ -220,6 +223,7 @@ export class SpaceMode {
     if (this.wormhole) { this.scene.remove(this.wormhole); this.wormhole = null; }
     this.transitCooldown = 5;
     if (this.anomaly) { this.scene.remove(this.anomaly); this.anomaly = null; }
+    if (this.atlas) { this.scene.remove(this.atlas); this.atlas = null; }
     this.warnedCore = false;
     this.bolts.forEach((b) => { b.mesh.visible = false; this.boltPool.push(b); });
     this.bolts.length = 0;
@@ -373,6 +377,17 @@ export class SpaceMode {
       this.anomaly = an;
     }
 
+    // Atlas Interface — the story objects, one in roughly a sixth of systems
+    if (!state.story.done && rng.chance(0.18)) {
+      const at = buildAtlasInterface();
+      const aa = rng.float(0, Math.PI * 2);
+      const ad = system.planets[system.planets.length - 1].orbit * rng.float(0.9, 1.25);
+      at.position.set(Math.cos(aa) * ad, rng.float(-900, 1400), Math.sin(aa) * ad);
+      at.userData.taken = !!state.story.atlasTaken?.[`${state.galaxyIndex}:${system.id}`];
+      this.scene.add(at);
+      this.atlas = at;
+    }
+
     // asteroid belt
     const astMat = new THREE.MeshStandardMaterial({ color: '#8b7d6b', roughness: 1, flatShading: true });
     const beltR = 9000 + rng.float(0, 4000);
@@ -456,6 +471,8 @@ export class SpaceMode {
     this.coreRequest = false;
     this.wormholeRequest = false;
     this.anomalyRequest = false;
+    this.atlas = null;
+    this.atlasRequest = false;
     const m = input.consumeMouse();
 
     const sens = 0.0022;
@@ -543,6 +560,11 @@ export class SpaceMode {
     }
     if (this.anomaly) {
       this.anomaly.rotation.y += dt * 0.05;
+    }
+    if (this.atlas) {
+      this.atlas.rotation.y += dt * 0.12;
+      const ad = this.atlas.position.distanceTo(this.ship.position);
+      if (ad < 700 && !this.atlas.userData.taken) this.atlasRequest = true;
     }
     if (this.blackHole) {
       for (const d of this.blackHole.userData.discs) d.rotation.z += dt * 0.25;
@@ -910,6 +932,16 @@ export class SpaceMode {
       }
     }
 
+    if (this.atlas && !tName) {
+      const ad = this.atlas.position.distanceTo(this.ship.position);
+      if (ad < 9000) {
+        tName = 'ATLAS INTERFACE';
+        tSub = this.atlas.userData.taken
+          ? 'the eye is dark · seed already taken'
+          : `it is watching · ${Math.round(ad)} u · fly in to receive a seed`;
+      }
+    }
+
     if (this.wormhole && !tName) {
       const wd = this.wormhole.position.distanceTo(this.ship.position);
       if (wd < 6000) {
@@ -960,6 +992,7 @@ export class SpaceMode {
     if (this.blackHole) push(this.blackHole.position, '#c48fff', 'blackhole');
     if (this.wormhole) push(this.wormhole.position, '#7d5bff', 'wormhole');
     if (this.anomaly) push(this.anomaly.position, '#8fd6ff', 'anomaly');
+    if (this.atlas) push(this.atlas.position, '#ff4d6d', 'atlas');
     push(this.sun.position, this.system?.starColor || '#ffd9a0', 'star');
     return out;
   }

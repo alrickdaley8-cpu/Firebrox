@@ -1,7 +1,7 @@
 // Persistent player state: inventory, discoveries, ship, upgrades, missions, settings.
 import { RESOURCES } from './universe.js';
 
-const SAVE_KEY = 'firebrox.save.v4';
+const SAVE_KEY = 'firebrox.save.v5';
 
 export const UPGRADES = {
   hyperdrive: { label: 'Hyperdrive Coils', desc: '+120 ly jump range per rank', max: 4, cost: (r) => 25000 + r * 30000 },
@@ -81,23 +81,63 @@ export const state = {
   wormholesUsed: 0,
   portalsUsed: 0,
   coreJumps: 0,
+
+  // --- bases, farming, terrain
+  bases: {},               // planetSeed -> { name, systemId, planetIndex, parts: [], crops: [] }
+  terrainEdits: {},        // planetSeed -> [{x,z,r,dh}]
+  homeBase: null,
+
+  // --- aliens
+  standing: { gek: 0, korvax: 0, vykeen: 0 },
+  words: { gek: [], korvax: [], vykeen: [] },
+  interactions: 0,
+
+  // --- fleet
+  freighter: null,         // { name, class, slots }
+  frigates: [],            // [{ id, name, type, rating, status, returnsAt, reward }]
+  expeditionsDone: 0,
+
+  // --- story & progress
+  story: { step: 0, seeds: 0, done: false },
+  milestones: {},
+  customShips: {},         // claimed wrecks
+  buffs: {},               // key -> expiry timestamp (ms)
+  exocraftOwned: false,
+
   settings: { ...DEFAULT_SETTINGS },
 };
 
 // ---- derived stats -------------------------------------------------
+export function shipDefs() {
+  return { ...SHIPS, ...state.customShips };
+}
+
+export function hasBuff(key) {
+  return (state.buffs[key] || 0) > Date.now();
+}
+
+export function addBuff(key, seconds) {
+  state.buffs[key] = Date.now() + seconds * 1000;
+}
+
 export const stats = {
-  get shipDef() { return SHIPS[state.ship] || SHIPS.shuttle; },
-  get stackLimit() { return 500 + state.upgrades.cargo * 250 + this.shipDef.cargo; },
+  get shipDef() { return shipDefs()[state.ship] || SHIPS.shuttle; },
+  get stackLimit() {
+    const storage = Object.values(state.bases).reduce(
+      (a, b) => a + (b.parts || []).filter((p) => p.type === 'storage').length * 200, 0);
+    return 500 + state.upgrades.cargo * 250 + this.shipDef.cargo + Math.min(1200, storage)
+      + (state.freighter ? 900 : 0);
+  },
   get jumpRange() { return 220 + state.upgrades.hyperdrive * 120 + this.shipDef.warp; },
-  get miningRate() { return 1 + state.upgrades.mining * 0.45; },
+  get miningRate() { return (1 + state.upgrades.mining * 0.45) * (hasBuff('mining') ? 1.8 : 1); },
   get shieldMax() { return 100 * (1 + state.upgrades.shield * 0.5) * this.shipDef.shield; },
-  get suitShieldMax() { return 100 * (1 + state.upgrades.suit * 0.6); },
+  get suitShieldMax() { return 100 * (1 + state.upgrades.suit * 0.6) * (hasBuff('shield') ? 1.5 : 1); },
   get shipDamage() { return (1 + state.upgrades.weapon * 0.6) * this.shipDef.damage; },
   get toolDamage() { return 1 + state.upgrades.boltcaster * 0.55; },
   get shipSpeed() { return this.shipDef.speed; },
-  get jetpackDrain() { return 22 / (1 + state.upgrades.jetpack * 0.5); },
+  get jetpackDrain() { return (hasBuff('jetpack') ? 8 : 22) / (1 + state.upgrades.jetpack * 0.5); },
   get jetpackRecharge() { return 32 * (1 + state.upgrades.jetpack * 0.4); },
-  get hazardDrain() { return 1.6 / (1 + state.upgrades.hazard); },
+  get hazardDrain() { return hasBuff('hazard') ? 0 : 1.6 / (1 + state.upgrades.hazard); },
   get scanSpeed() { return 1 + state.upgrades.scanner * 0.5; },
   get discoveryBonus() { return 1 + state.upgrades.scanner * 0.4; },
 };
@@ -146,7 +186,7 @@ export function buyUpgrade(key) {
 }
 
 export function buyShip(key) {
-  const def = SHIPS[key];
+  const def = shipDefs()[key];
   if (!def) return 'missing';
   if (state.ownedShips.includes(key)) { state.ship = key; return 'switched'; }
   if (state.units < def.price) return 'poor';
@@ -195,6 +235,15 @@ export function loadGame() {
     state.ownedShips = data.ownedShips?.length ? data.ownedShips : ['shuttle'];
     state.drives = { cadmium: false, emeril: false, indium: false, ...data.drives };
     state.visitedGalaxies = data.visitedGalaxies?.length ? data.visitedGalaxies : [state.galaxyIndex || 0];
+    state.bases = data.bases || {};
+    state.terrainEdits = data.terrainEdits || {};
+    state.standing = { gek: 0, korvax: 0, vykeen: 0, ...data.standing };
+    state.words = { gek: [], korvax: [], vykeen: [], ...data.words };
+    state.frigates = data.frigates || [];
+    state.story = { step: 0, seeds: 0, done: false, ...data.story };
+    state.milestones = data.milestones || {};
+    state.customShips = data.customShips || {};
+    state.buffs = data.buffs || {};
     return true;
   } catch (e) {
     return false;

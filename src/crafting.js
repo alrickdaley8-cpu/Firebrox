@@ -1,5 +1,5 @@
 // Refiner / crafting recipes.
-import { state, stats, hasResources, spendResources, addResource } from './state.js';
+import { state, stats, hasResources, spendResources, addResource, addBuff } from './state.js';
 
 export const RECIPES = [
   {
@@ -70,6 +70,43 @@ export const RECIPES = [
     cost: { ferrite: 70, chromatic: 15 },
     effect: () => { state.shipHealth = Math.min(100, state.shipHealth + 45); },
     outLabel: 'Hull repaired',
+  },
+  // ---- nutrient processor: cooked goods that grant timed buffs
+  {
+    id: 'stellar_broth',
+    label: 'Stellar Broth',
+    desc: 'Cooked meal. Immunity to environmental hazards for 5 minutes.',
+    cost: { carbon: 60, sodium: 40 },
+    effect: () => addBuff('hazard', 300),
+    outLabel: 'Hazard immunity for 5 minutes',
+    cooked: true,
+  },
+  {
+    id: 'jetpack_gel',
+    label: 'Propulsion Gel',
+    desc: 'Cuts jetpack fuel burn by two thirds for 5 minutes.',
+    cost: { dihydrogen: 50, carbon: 30 },
+    effect: () => addBuff('jetpack', 300),
+    outLabel: 'Jetpack efficiency for 5 minutes',
+    cooked: true,
+  },
+  {
+    id: 'miners_brew',
+    label: "Miner's Brew",
+    desc: '+80% mining beam speed for 5 minutes.',
+    cost: { carbon: 45, ferrite: 45 },
+    effect: () => addBuff('mining', 300),
+    outLabel: 'Mining boost for 5 minutes',
+    cooked: true,
+  },
+  {
+    id: 'shield_tonic',
+    label: 'Shield Tonic',
+    desc: '+50% exosuit shield capacity for 5 minutes.',
+    cost: { sodium: 50, platinum: 20 },
+    effect: () => { addBuff('shield', 300); state.suitShield = stats.suitShieldMax; },
+    outLabel: 'Shield capacity boosted for 5 minutes',
+    cooked: true,
   },
 ];
 

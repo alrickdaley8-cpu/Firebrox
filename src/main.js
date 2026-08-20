@@ -9,6 +9,9 @@ import {
   state, stats, saveGame, loadGame, clearSave, hasSave,
 } from './state.js';
 import * as missions from './missions.js';
+import * as fleet from './fleet.js';
+import * as story from './story.js';
+import * as building from './building.js';
 import { input } from './input.js';
 import { ui } from './ui.js';
 import { SpaceMode } from './space.js';
@@ -57,6 +60,9 @@ const game = {
   settingsOpen: false,
   photoMode: false,
   atAnomaly: false,
+  talking: false,
+  teleporting: false,
+  seeding: false,
 };
 
 game.map = new GalaxyMap(game.galaxy, (sys) => warpTo(sys.id));
@@ -257,6 +263,20 @@ function jumpToGalaxy(index, reason = 'core') {
   }, 1400);
 }
 
+function takeAtlasSeed() {
+  const at = game.space.atlas;
+  if (!at || at.userData.taken) return;
+  at.userData.taken = true;
+  if (!state.story.atlasTaken) state.story.atlasTaken = {};
+  state.story.atlasTaken[`${state.galaxyIndex}:${state.systemId}`] = true;
+  const n = story.addAtlasSeed();
+  state.nanites += 120;
+  ui.warpFlash(700);
+  audio.discovery();
+  ui.log(`ATLAS SEED ACQUIRED — ${n}/5 · +120 nanites`, 'good');
+  ui.log('The eye dims. Something vast has noticed you.', '');
+}
+
 function dockAtAnomaly() {
   game.atAnomaly = true;
   input.unlock();
@@ -357,6 +377,9 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Escape' || e.code === 'KeyE') ui.closeTrade();
     return;
   }
+  if (game.talking) { if (e.code === 'Escape') ui.closeDialogue(); return; }
+  if (game.teleporting) { if (e.code === 'Escape') ui.closeTeleport(); return; }
+  if (game.seeding) { if (e.code === 'Escape') ui.closeSeeds(); return; }
   if (game.atAnomaly) {
     if (e.code === 'Escape' || e.code === 'KeyE') ui.closeAnomaly();
     return;
@@ -385,6 +408,13 @@ addEventListener('keydown', (e) => {
       }
       break;
     case 'KeyC': openCrafting(); break;
+    case 'KeyB':
+      if (game.mode === 'surface') game.surface.toggleBuildMode();
+      else ui.log('Base building only works planetside', 'warn');
+      break;
+    case 'BracketLeft': if (game.mode === 'surface' && game.surface.buildMode) game.surface.cycleBuildType(-1); break;
+    case 'BracketRight': if (game.mode === 'surface' && game.surface.buildMode) game.surface.cycleBuildType(1); break;
+    case 'KeyV': if (game.mode === 'surface') game.surface.summonExocraft(); break;
     case 'KeyH':
       game.photoMode = !game.photoMode;
       ui.showHUD(!game.photoMode);
@@ -419,7 +449,7 @@ function loop() {
 
   const active = game.mode === 'space' ? game.space : game.surface;
   const blocked = game.paused || game.map.open || game.docked || game.crafting
-    || game.settingsOpen || game.atAnomaly;
+    || game.settingsOpen || game.atAnomaly || game.talking || game.teleporting || game.seeding;
   input.enabled = !blocked && input.locked;
 
   if (!blocked) {
@@ -430,6 +460,7 @@ function loop() {
       else if (game.space.blackHoleRequest) blackHoleJump();
       else if (game.space.wormholeRequest) wormholeTravel();
       else if (game.space.anomalyRequest) dockAtAnomaly();
+      else if (game.space.atlasRequest) takeAtlasSeed();
       else if (game.space.landRequest) landOn(game.space.landRequest);
       else if (game.space.dockRequest) dockAtStation();
     } else if (game.surface.launchRequest) {
@@ -437,12 +468,30 @@ function loop() {
     } else if (game.surface.portalRequest) {
       portalTravel(game.surface.portalRequest);
       game.surface.portalRequest = null;
+    } else if (game.surface.wreckRequest) {
+      claimWreck(game.surface.wreckRequest);
+      game.surface.wreckRequest = null;
+    } else if (game.surface.teleportRequest) {
+      game.surface.teleportRequest = null;
+      openTeleport();
+    } else if (game.surface.plantRequest) {
+      const part = game.surface.plantRequest;
+      game.surface.plantRequest = null;
+      openSeeds(part);
+    } else if (game.surface.encounterRequest) {
+      const enc = game.surface.encounterRequest;
+      game.surface.encounterRequest = null;
+      openDialogue(enc);
     }
     lastShield = state.shields;
     gatherTick -= dt;
     if (gatherTick <= 0) {
       gatherTick = 1;
       for (const m of missions.syncGather()) ui.missionDone(m);
+      const step = story.check();
+      if (step) ui.storyStep(step);
+      for (const ms of story.checkMilestones()) ui.milestone(ms);
+      for (const f of fleet.tick()) ui.log(`FRIGATE RETURNED — ${f.name} is waiting at your freighter`, 'good');
     }
   } else {
     input.consumeMouse();

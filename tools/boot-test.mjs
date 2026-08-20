@@ -153,6 +153,38 @@ await new Promise((r) => setTimeout(r, 800));
 frames(90);
 console.log('mode after landing:', G.game.mode, '· planet:', G.game.surface.planet?.name,
   '· chunks:', G.game.surface.chunks.size);
+
+// build mode through the real key handler
+key('KeyB'); frames(5);
+console.log('build mode on:', G.game.surface.buildMode,
+  '· build hud visible:', !document.getElementById('build-hud').classList.contains('hidden'),
+  '· part:', document.querySelector('#build-part b')?.textContent);
+key('BracketRight'); frames(3);
+console.log('cycled part ->', document.querySelector('#build-part b')?.textContent);
+G.state.inventory.ferrite = 900; G.state.inventory.carbon = 900; G.state.inventory.chromatic = 300;
+G.state.inventory.platinum = 300; G.state.inventory.sodium = 300;
+input.mouseDown = true; frames(30); input.mouseDown = false; frames(5);
+console.log('parts placed:', G.game.surface.baseParts.length,
+  '· base saved:', Object.keys(G.state.bases).length ? 'yes' : 'no');
+key('KeyB'); frames(3);
+console.log('build mode off:', !G.game.surface.buildMode);
+
+// terrain manipulator
+const spot0 = G.game.surface.buildSpot();
+const h0 = G.game.surface.height(spot0.x, spot0.z);
+input.keys.add('KeyZ'); frames(40); input.keys.delete('KeyZ'); frames(3);
+console.log('terrain edited:', (G.game.surface.height(spot0.x, spot0.z) - h0).toFixed(1), 'm');
+
+// exocraft summon + board
+G.state.exocraftOwned = true;
+key('KeyV'); frames(5);
+console.log('exocraft spawned:', !!G.game.surface.exocraft);
+input.keys.add('KeyF'); frames(4); input.keys.delete('KeyF'); frames(2);
+console.log('boarded exocraft:', G.game.surface.inExocraft);
+input.keys.add('KeyW'); frames(90); input.keys.delete('KeyW');
+console.log('exocraft moving:', G.game.surface.exoVel.length().toFixed(1), 'm/s');
+input.keys.add('KeyF'); frames(4); input.keys.delete('KeyF'); frames(2);
+console.log('left exocraft:', !G.game.surface.inExocraft);
 input.keys.add('KeyE');
 G.game.surface.pos.copy(G.game.surface.ship.position).add({ x: 2, y: 2, z: 2 });
 frames(30);

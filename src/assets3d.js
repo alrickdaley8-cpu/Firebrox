@@ -748,3 +748,166 @@ export function buildPortal(color = '#ffb066') {
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
 }
+
+// ---------------------------------------------------------------- base parts & vehicles
+export function buildPart(type, accent = '#ff9f43') {
+  const g = new THREE.Group();
+  const wall = new THREE.MeshStandardMaterial({ color: '#d8d3c6', roughness: 0.75, metalness: 0.15 });
+  const metal = new THREE.MeshStandardMaterial({ color: '#8d97a6', roughness: 0.45, metalness: 0.7 });
+  const lit = new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 2 });
+  const glass = new THREE.MeshStandardMaterial({
+    color: '#8fd6ff', metalness: 0.2, roughness: 0.08, transparent: true, opacity: 0.55,
+    emissive: '#2f6f9f', emissiveIntensity: 0.5,
+  });
+
+  if (type === 'habitat') {
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 4.8, 2.6, 14), wall);
+    base.position.y = 1.3; g.add(base);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(4.4, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), glass);
+    dome.position.y = 2.6; g.add(dome);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, 0.3), lit);
+    door.position.set(0, 1.1, 4.7); g.add(door);
+  } else if (type === 'storage') {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 3.2), metal);
+    box.position.y = 1.2; g.add(box);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.3, 0.3), lit);
+    stripe.position.set(0, 2, 1.6); g.add(stripe);
+  } else if (type === 'beacon') {
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 9, 8), metal);
+    mast.position.y = 4.5; g.add(mast);
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 10), lit);
+    orb.position.y = 9.4; g.add(orb);
+    const beam = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: radialSprite(accent, 128, 2), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+    }));
+    beam.position.y = 9.4; beam.scale.setScalar(14); g.add(beam);
+  } else if (type === 'farm') {
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.6, 2.6), metal);
+    tray.position.y = 0.8; g.add(tray);
+    for (const s of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.9, 6), metal);
+      leg.position.set(s * 1.8, 0.45, 0); g.add(leg);
+    }
+    const soil = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 2.2), new THREE.MeshStandardMaterial({ color: '#4a3a2a', roughness: 1 }));
+    soil.position.y = 1.15; g.add(soil);
+    g.userData.soil = soil;
+  } else if (type === 'solar') {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.6, 8), metal);
+    pole.position.y = 1.3; g.add(pole);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.16, 2.2), new THREE.MeshStandardMaterial({
+      color: '#1d2b4a', metalness: 0.85, roughness: 0.2, emissive: '#16304f', emissiveIntensity: 0.4,
+    }));
+    panel.position.set(0, 2.7, 0); panel.rotation.x = -0.5; g.add(panel);
+  } else if (type === 'teleporter') {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.34, 12, 28), metal);
+    ring.position.y = 3; g.add(ring);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.3, 0.5, 16), wall);
+    pad.position.y = 0.25; g.add(pad);
+    const field = new THREE.Mesh(new THREE.CircleGeometry(2.3, 24), new THREE.MeshBasicMaterial({
+      color: accent, transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    field.position.y = 3; g.add(field);
+    g.userData.field = field;
+  } else if (type === 'light') {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.4, 6), metal);
+    pole.position.y = 2.2; g.add(pole);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.7, 0.9, 10), lit);
+    head.position.y = 4.6; head.rotation.x = Math.PI; g.add(head);
+  } else { // wall
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(5, 3.2, 0.35), wall);
+    panel.position.y = 1.6; g.add(panel);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(5.1, 0.2, 0.4), lit);
+    trim.position.y = 3.2; g.add(trim);
+  }
+
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+export function buildCrop(color = '#8fdc6a', scale = 1) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true });
+  for (let i = 0; i < 5; i++) {
+    const stalk = new THREE.Mesh(new THREE.ConeGeometry(0.18, 1.1, 5), mat);
+    stalk.position.set((i % 3 - 1) * 1.1, 0.55, (Math.floor(i / 3) - 0.5) * 0.9);
+    g.add(stalk);
+    const bulb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), mat);
+    bulb.position.set(stalk.position.x, 1.2, stalk.position.z);
+    g.add(bulb);
+  }
+  g.scale.setScalar(scale);
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+export function buildExocraft() {
+  const g = new THREE.Group();
+  const body = new THREE.MeshStandardMaterial({ color: '#e6a34d', metalness: 0.5, roughness: 0.4 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#33383f', metalness: 0.6, roughness: 0.5 });
+  const glass = new THREE.MeshStandardMaterial({
+    color: '#0d2b3d', metalness: 0.9, roughness: 0.08, emissive: '#1a5f7f', emissiveIntensity: 0.7,
+  });
+
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 5), body);
+  chassis.position.y = 1.3;
+  g.add(chassis);
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.7, 1.4), body);
+  nose.position.set(0, 1.1, -3);
+  g.add(nose);
+  const cab = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), glass);
+  cab.position.set(0, 1.85, -0.4);
+  cab.scale.set(1, 0.9, 1.3);
+  g.add(cab);
+  const rack = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.2, 1.6), dark);
+  rack.position.set(0, 2.0, 1.7);
+  g.add(rack);
+
+  const wheels = [];
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.7, 14), dark);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(sx * 1.9, 1, sz * 1.7);
+      g.add(wheel);
+      wheels.push(wheel);
+    }
+  }
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 0.2), new THREE.MeshStandardMaterial({
+    color: '#fff2cf', emissive: '#ffe9c8', emissiveIntensity: 2.6,
+  }));
+  lamp.position.set(0, 1.4, -3.7);
+  g.add(lamp);
+
+  g.userData.wheels = wheels;
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+export function buildAtlasInterface() {
+  const g = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({
+    color: '#2a1030', metalness: 0.6, roughness: 0.3, emissive: '#5a1f5a', emissiveIntensity: 0.5,
+  });
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(240, 1), shell);
+  core.scale.set(1, 1.7, 0.35);
+  g.add(core);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(90, 24, 18), new THREE.MeshStandardMaterial({
+    color: '#ff4d6d', emissive: '#ff2f5f', emissiveIntensity: 3,
+  }));
+  eye.position.z = 90;
+  g.add(eye);
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(300 + i * 70, 8, 8, 40), new THREE.MeshBasicMaterial({
+      color: '#ff7de0', transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    ring.rotation.set(Math.random(), Math.random(), Math.random());
+    g.add(ring);
+  }
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: radialSprite('#ff4d6d', 256, 2), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+  }));
+  glow.scale.setScalar(2200);
+  g.add(glow);
+  return g;
+}

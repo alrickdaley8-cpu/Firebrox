@@ -300,3 +300,41 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-fa
 .d-head { font-size: 12.5px; color: #fff; letter-spacing: 0.08em; margin-bottom: 4px; }
 .d-desc { font-size: 10px; color: rgba(190, 225, 245, 0.7); line-height: 1.45; min-height: 28px; margin-bottom: 8px; }
 .drive button { width: 100%; padding: 5px; font-size: 9.5px; }
+
+/* ---------------- build mode ---------------- */
+#build-hud { bottom: 200px; left: 18px; width: 250px; }
+#build-part b { display: block; font-size: 13px; color: #fff; letter-spacing: 0.08em; }
+#build-part span { display: block; font-size: 10px; color: rgba(190, 225, 245, 0.7); line-height: 1.4; margin: 3px 0 5px; }
+#build-part em { font-style: normal; font-size: 10.5px; color: var(--accent); }
+.build-keys { margin-top: 8px; font-size: 9px; letter-spacing: 0.1em; color: rgba(180, 215, 235, 0.6); }
+
+/* ---------------- atlas objective ---------------- */
+#objective { top: 205px; left: 18px; width: 250px; border-left: 2px solid var(--accent); }
+#objective-title { font-size: 12.5px; color: #fff; letter-spacing: 0.1em; margin-bottom: 3px; }
+#objective-text { font-size: 10.5px; color: rgba(200, 230, 245, 0.8); line-height: 1.45; }
+.hint-sm { color: rgba(180, 215, 235, 0.55); font-size: 9.5px; }
+
+/* ---------------- dialogue ---------------- */
+.dialogue-inner {
+  width: min(720px, 94vw); border: 1px solid var(--line); background: rgba(5, 12, 20, 0.9);
+  border-radius: 6px; padding: 26px 30px; text-align: center;
+}
+.d-race { font-size: 11px; letter-spacing: 0.16em; color: rgba(190, 225, 245, 0.75); margin-bottom: 10px; }
+.dialogue-inner h2 { font-size: 20px; font-weight: 400; letter-spacing: 0.1em; margin: 0 0 12px; }
+.dialogue-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.dialogue-options button { width: 100%; padding: 11px; font-size: 11px; letter-spacing: 0.12em; }
+.dialogue-result { min-height: 40px; font-size: 12px; color: #9dffc4; line-height: 1.6; }
+
+/* ---------------- teleport ---------------- */
+.teleport-list { max-height: 46vh; overflow-y: auto; }
+.tp-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(120, 220, 255, 0.12); font-size: 12px; }
+.tp-row b { display: block; letter-spacing: 0.08em; }
+.tp-row span { font-size: 10.5px; color: rgba(190, 225, 245, 0.7); }
+
+/* ---------------- journey log tabs ---------------- */
+.log-tabs { display: flex; gap: 6px; margin-bottom: 10px; justify-content: center; }
+.log-tabs .tab { padding: 6px 14px; font-size: 9.5px; }
+#milestone-list, #story-list, #language-list {
+  flex: 1; overflow-y: auto; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 4px; padding: 14px 18px; margin-bottom: 20px; min-height: 240px;
+}
