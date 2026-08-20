@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>J.A.R.V.I.S. — Just A Rather Very Intelligent System</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/jarvis.css" />
+</head>
+<body>
+  <div id="vignette"></div>
+  <canvas id="hud-canvas"></canvas>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div class="hex-veil" aria-hidden="true"></div>
+
+  <!-- BOOT -->
+  <section id="boot" class="boot">
+    <div class="boot-inner">
+      <p class="boot-corp">STARK INDUSTRIES · MALIBU · PROPRIETARY</p>
+      <h1 class="boot-title">
+        <span>J</span><span>.</span><span>A</span><span>.</span><span>R</span><span>.</span><span>V</span><span>.</span><span>I</span><span>.</span><span>S</span>
+      </h1>
+      <p class="boot-sub">JUST A RATHER VERY INTELLIGENT SYSTEM</p>
+      <div class="boot-reactor">
+        <img src="assets/arc-reactor.png" alt="" />
+        <div class="boot-ring"></div>
+        <div class="boot-ring delay"></div>
+      </div>
+      <div class="boot-bar"><i id="boot-fill"></i></div>
+      <p id="boot-pct">00%</p>
+      <ul id="boot-log" class="boot-log"></ul>
+      <button id="boot-skip" type="button">SKIP INITIALIZATION</button>
+    </div>
+  </section>
+
+  <!-- APP -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/favicon.png" alt="" class="brand-mark" />
+        <div>
+          <strong>J.A.R.V.I.S.</strong>
+          <em id="build-tag">OS 11.4.2 · ARC CORE</em>
+        </div>
+      </div>
+      <div class="top-center">
+        <span class="chip live"><i></i> LINK SECURE</span>
+        <span class="chip" id="sat-chip">SAT-07</span>
+        <span class="chip" id="mode-chip">CIVILIAN</span>
+      </div>
+      <div class="clock-block">
+        <time id="clock">00:00:00</time>
+        <span id="date-line">—</span>
+      </div>
+    </header>
+
+    <aside class="panel left-panel">
+      <h2>SYSTEM VITALS</h2>
+      <div class="meters" id="meters"></div>
+      <div class="radar-wrap">
+        <h3>SWEEP</h3>
+        <canvas id="radar" width="220" height="220"></canvas>
+        <p id="radar-note">Perimeter clear</p>
+      </div>
+      <div class="mini-stats">
+        <div><span>PWR</span><b id="pwr">100%</b></div>
+        <div><span>LAT</span><b id="lat">12ms</b></div>
+        <div><span>UPLINK</span><b id="uplink">99.9</b></div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="orbit o1"></div>
+      <div class="orbit o2"></div>
+      <div class="orbit o3"></div>
+      <div class="reactor" id="reactor" title="Click to speak">
+        <div class="reactor-glow"></div>
+        <img src="assets/arc-reactor.png" alt="Arc reactor" />
+        <div class="listen-ring" id="listen-ring"></div>
+      </div>
+      <p class="reactor-caption" id="reactor-caption">AWAITING DIRECTIVE</p>
+      <p class="spoken" id="spoken"></p>
+      <div class="quick" id="quick">
+        <button data-cmd="status report">STATUS</button>
+        <button data-cmd="run diagnostics">DIAGNOSTICS</button>
+        <button data-cmd="suit up">SUIT UP</button>
+        <button data-cmd="weather">WEATHER</button>
+        <button data-cmd="initiate scan">SCAN</button>
+        <button data-cmd="help">PROTOCOLS</button>
+      </div>
+    </main>
+
+    <aside class="panel right-panel">
+      <h2>COMMS</h2>
+      <div id="feed" class="feed"></div>
+    </aside>
+
+    <footer class="dock">
+      <button id="mic-btn" class="mic" type="button" aria-label="Voice input">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+        </svg>
+      </button>
+      <form id="cmd-form" autocomplete="off">
+        <label class="sr" for="cmd">Command</label>
+        <span class="prompt">SIR &gt;</span>
+        <input id="cmd" name="cmd" placeholder="Address J.A.R.V.I.S. — or press the reactor to speak" />
+        <button type="submit">ENGAGE</button>
+      </form>
+    </footer>
+  </div>
+
+  <!-- OVERLAYS -->
+  <div id="suitup" class="overlay" hidden>
+    <img src="assets/helmet.png" alt="" class="helmet" />
+    <div class="overlay-copy">
+      <p class="tag">MARK LXXXV</p>
+      <h2>ARMOR PROTOCOL</h2>
+      <p id="suit-line">Assembling nanotech lattice…</p>
+      <div class="boot-bar gold"><i id="suit-fill"></i></div>
+    </div>
+  </div>
+
+  <div id="lockdown" class="overlay red" hidden>
+    <div class="overlay-copy">
+      <p class="tag">PRIORITY ALPHA</p>
+      <h2>LOCKDOWN</h2>
+      <p>Facility sealed. Biometric hold in effect.</p>
+      <button id="unlock-btn" type="button">AUTHORIZE RELEASE</button>
+    </div>
+  </div>
+
+  <div id="scanfx" class="scanfx" hidden></div>
+
+  <script src="js/audio.js"></script>
+  <script src="js/hud.js"></script>
+  <script src="js/voice.js"></script>
+  <script src="js/brain.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
