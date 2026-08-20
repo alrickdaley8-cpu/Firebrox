@@ -1,5 +1,5 @@
-const MAX_N = 8192;
-const MAX_S = 8;
+const MAX_N = 16384;
+const MAX_S = 9;
 
 export class Simulation {
   constructor(width, height) {

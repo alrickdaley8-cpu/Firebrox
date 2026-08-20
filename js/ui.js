@@ -38,8 +38,7 @@ export function mountUI(app) {
   bindSlider('collision', (v) => app.setCollision(v));
   bindSlider('temp', (v) => app.setTemp(v));
   bindSlider('time', (v) => app.setTime(v));
-  bindSlider('trail', (v) => app.setTrail(v));
-  bindSlider('glow', (v) => app.setGlow(v));
+  bindSlider('size', (v) => app.setSize(v));
 
   $('wrap').addEventListener('change', (e) => app.setWrap(e.target.checked));
   $('preset').addEventListener('change', (e) => {
@@ -105,8 +104,7 @@ export function mountUI(app) {
       setSlider('collision', state.beta, state.beta.toFixed(2));
       setSlider('temp', state.temp, state.temp.toFixed(0));
       setSlider('time', state.timeScale, `${state.timeScale.toFixed(2)}×`);
-      setSlider('trail', state.trail, state.trail.toFixed(2));
-      setSlider('glow', state.glow, state.glow.toFixed(2));
+      setSlider('size', state.size, state.size.toFixed(1));
       $('wrap').checked = state.wrap;
       $('preset').value = state.presetId;
       $('palette').value = state.palette;

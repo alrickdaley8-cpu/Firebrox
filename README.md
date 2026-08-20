@@ -1,6 +1,8 @@
 # FIREBROX
 
-A particle life laboratory. Species of glowing motes attract and repel according to a force matrix. Nothing is choreographed — cells, serpents, lattices, and galaxies appear from the laws you write.
+A particle life laboratory. Species of solid colored particles attract and repel according to a force matrix. Nothing is choreographed — cells, serpents, lattices, and galaxies appear from the laws you write.
+
+Each frame is drawn clean: no trails, no afterimage. Just the classic particle-life dots.
 
 ## Run it
 

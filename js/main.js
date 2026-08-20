@@ -25,8 +25,7 @@ const state = {
   seed: '------',
   blurb: PRESETS[0].blurb,
   focus: -1,
-  glow: 1,
-  trail: 0.74,
+  size: 3.4,
 };
 
 const ui = mountUI({
@@ -64,14 +63,9 @@ const ui = mountUI({
     state.timeScale = v;
     refresh();
   },
-  setTrail: (v) => {
-    state.trail = v;
-    renderer.trail = v;
-    refresh();
-  },
-  setGlow: (v) => {
-    state.glow = v;
-    renderer.glow = v;
+  setSize: (v) => {
+    state.size = v;
+    renderer.size = v;
     refresh();
   },
   setWrap: (v) => {
@@ -161,8 +155,7 @@ function frame(now) {
       guard++;
     }
   }
-  renderer.trail = state.trail;
-  renderer.glow = state.glow;
+  renderer.size = state.size;
   renderer.focus = state.focus;
   renderer.render(sim);
 
@@ -192,8 +185,8 @@ function applyPreset(id, opts = {}) {
   sim.temp = preset.temp;
   sim.wrap = preset.wrap;
   sim.setMatrix(preset.matrix);
-  state.trail = preset.trail;
-  state.glow = preset.glow;
+  state.size = preset.size ?? 3.4;
+  renderer.size = state.size;
   applyPalette(preset.palette);
   state.seed = hashMatrix(sim.getMatrix());
   if (!opts.silent) {
@@ -212,7 +205,6 @@ function randomize() {
   state.blurb = 'A new physics, freshly rolled.';
   state.seed = seed.toString(16).toUpperCase().padStart(8, '0').slice(0, 6);
   sim.respawn();
-  sim.burst();
   ui.flash(`LAW #${state.seed}`);
   refresh();
 }
@@ -321,8 +313,7 @@ function snapshotState() {
     temp: sim.temp,
     wrap: sim.wrap,
     timeScale: state.timeScale,
-    trail: state.trail,
-    glow: state.glow,
+    size: state.size,
     presetId: state.presetId,
     palette: state.palette,
     randMode: state.randMode,
@@ -351,8 +342,7 @@ function serialize() {
     t: +sim.temp.toFixed(1),
     w: sim.wrap ? 1 : 0,
     ts: +state.timeScale.toFixed(2),
-    tr: +state.trail.toFixed(2),
-    g: +state.glow.toFixed(2),
+    sz: +state.size.toFixed(2),
     p: state.palette,
     m: sim.getMatrix().flat().map((v) => +v.toFixed(3)),
     seed: state.seed,
@@ -362,16 +352,16 @@ function serialize() {
 function applySerialized(data) {
   if (!data || !data.m) return false;
   sim.setSpecies(data.s || 4);
-  sim.setCount(data.n || 2400);
+  sim.setCount(data.n || 4000);
   sim.rMax = data.r ?? 86;
   sim.force = data.f ?? 280;
   sim.damp = data.d ?? 4.2;
   sim.beta = data.b ?? 0.3;
   sim.temp = data.t ?? 0;
-  sim.wrap = !!data.w;
+  sim.wrap = data.w !== 0;
   state.timeScale = data.ts ?? 1;
-  state.trail = data.tr ?? 0.74;
-  state.glow = data.g ?? 1;
+  state.size = data.sz ?? 3.4;
+  renderer.size = state.size;
   applyPalette(data.p || 'spectrum');
   const s = sim.species;
   const matrix = [];
@@ -404,7 +394,7 @@ function persist() {
 
 function restoreSession() {
   try {
-    const raw = localStorage.getItem('firebrox');
+    const raw = localStorage.getItem('firebrox-v2');
     if (!raw) return false;
     return applySerialized(JSON.parse(raw));
   } catch {
