@@ -552,6 +552,71 @@ console.log('log panes — milestones:', window.document.querySelectorAll('#mile
   '· story:', window.document.querySelectorAll('#story-list .mission').length,
   '· language:', window.document.querySelectorAll('#language-list .mission').length);
 
+// ---- COCKPIT + SEAMLESS ATMOSPHERIC FLIGHT ---------------------------
+ui.mode = 'space';
+const flySys = buildSystem(g0.systems[1]);
+space.setSystem(flySys);
+console.log('cockpit built:', !!space.cockpit, '· screens:', space.cockpit.userData.screens.length);
+console.log('cockpit toggle ->', space.toggleCockpit(), '· hull hidden from inside:',
+  space.ship.children.filter((c) => c.isMesh && c.visible).length === 0);
+input.keys = new Set();
+for (let i = 0; i < 30; i++) space.update(1 / 60);
+console.log('camera inside ship:', space.camera.position.distanceTo(space.ship.position).toFixed(2), 'u from hull centre');
+space.toggleCockpit();
+
+// fly into a planet and check the entry handoff fires
+const flyHolder = space.planets[0];
+const planet = flyHolder.userData.planet;
+space.transitCooldown = 0;
+space.throttle = 0; space.speed = 0;
+space.ship.position.copy(flyHolder.position).add({ x: 0, y: 0, z: planet.radius * 1.03 });
+let entry = null;
+for (let i = 0; i < 120; i++) { space.update(1 / 60); if (space.entryRequest) entry = space.entryRequest; }
+console.log('atmospheric entry triggered:', !!entry,
+  entry ? `lat ${entry.lat.toFixed(2)} lon ${entry.lon.toFixed(2)}` : '');
+
+// hand off into surface flight
+ui.mode = 'surface';
+surface.setPlanet(planet, flySys);
+surface.beginAtmosphericFlight(entry || { lat: 0.3, lon: 1.1, heading: { x: 0, y: 0, z: -1 }, speed: 200 });
+const startAlt = surface.ship.position.y - surface.height(surface.ship.position.x, surface.ship.position.z);
+console.log('entered flying at altitude', Math.round(startAlt), 'm · piloting:', surface.piloting);
+
+// descend and land
+input.keys = new Set(['ControlLeft']);
+let landedAt = null;
+for (let i = 0; i < 1200 && !landedAt; i++) {
+  surface.scene.updateMatrixWorld(true);
+  surface.update(1 / 60);
+  const alt = surface.ship.position.y - surface.height(surface.ship.position.x, surface.ship.position.z);
+  if (alt <= 2.4 && Math.abs(surface.shipSpeed) < 24) landedAt = alt;
+}
+input.keys = new Set();
+console.log('ship landed:', landedAt !== null, '· altitude', landedAt?.toFixed(1), 'm · hull', state.shipHealth.toFixed(0));
+
+// disembark, walk, re-board
+surface.disembark();
+console.log('on foot after landing:', !surface.piloting,
+  '· distance to ship', surface.pos.distanceTo(surface.ship.position).toFixed(1), 'm');
+surface.boardShip();
+console.log('re-boarded:', surface.piloting);
+
+// climb back out to space
+input.keys = new Set(['Space', 'KeyW']);
+let exit = null;
+for (let i = 0; i < 2000 && !exit; i++) {
+  surface.update(1 / 60);
+  if (surface.exitRequest) exit = surface.exitRequest;
+}
+input.keys = new Set();
+console.log('left atmosphere:', !!exit, exit ? `lat ${exit.lat.toFixed(2)} lon ${exit.lon.toFixed(2)}` : '',
+  '· final altitude', Math.round(surface.ship.position.y - surface.height(surface.ship.position.x, surface.ship.position.z)));
+
+// lat/lon mapping round-trips
+const rt = surface.xzToLatLon(...Object.values(surface.latLonToXZ(0.42, -1.9)).slice(0, 2));
+console.log('lat/lon round trip:', rt.lat.toFixed(3), rt.lon.toFixed(3), '(expected 0.420 -1.900)');
+surface.piloting = false;
+
 // ---- MAP + SAVE ------------------------------------------------------
 map.show(0);
 map.selected = 5;

@@ -144,6 +144,9 @@ export const ui = {
       this.set(r.system, 'system', info.system || '—');
       this.set(r.planetLabel, 'planetLabel', info.planetLabel || 'Location');
       this.set(r.planet, 'planet', info.planet || 'Deep Space');
+      if (info.piloting !== undefined && this.last.piloting !== info.piloting) {
+        this.last.piloting = info.piloting;
+      }
       const cond = info.conditions || '';
       if (this.last.conditions !== cond) {
         this.last.conditions = cond;
@@ -364,6 +367,19 @@ export const ui = {
       el.style.transition = `opacity ${duration}ms ease-out`;
       el.style.opacity = '0';
     });
+  },
+
+  // Atmospheric entry: heat glow + streaks, driven straight from the flight code.
+  entryEffect(amount, skyColor) {
+    const el = $('entry-fx');
+    if (!el) return;
+    if (amount <= 0.01) { el.style.opacity = '0'; return; }
+    el.style.opacity = String(Math.min(0.85, amount));
+    el.style.background = `radial-gradient(ellipse at 50% 120%,
+      rgba(255,190,110,${0.55 * amount}) 0%,
+      rgba(255,110,50,${0.4 * amount}) 35%,
+      rgba(0,0,0,0) 72%),
+      linear-gradient(to top, rgba(255,140,60,${0.4 * amount}), rgba(0,0,0,0) 60%)`;
   },
 
   damageFlash() {

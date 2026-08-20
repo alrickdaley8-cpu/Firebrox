@@ -1,7 +1,7 @@
 {
   "name": "firebrox",
   "version": "1.0.0",
-  "description": "FIREBROX \u2014 a procedural No Man\u2019s Sky in the browser. No build step, no dependencies.",
+  "description": "FIREBROX — a procedural No Man’s Sky in the browser. No build step, no dependencies.",
   "main": "index.js",
   "scripts": {
     "start": "node server.mjs",

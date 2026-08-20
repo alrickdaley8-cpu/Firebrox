@@ -136,6 +136,43 @@ function warpTo(systemId) {
   }, 480);
 }
 
+function atmosphericEntry(entry) {
+  const planet = entry.planet;
+  audio.sweep(320, 90, 1.6, 'sawtooth', 0.3);
+  game.surface.setPlanet(planet, game.system);
+  game.surface.beginAtmosphericFlight(entry);
+  game.mode = 'surface';
+  ui.mode = 'surface';
+  game.space.transitCooldown = 6;
+  ui.log(`ATMOSPHERIC ENTRY — ${planet.name} · ${planet.biome.label}`, 'warn');
+  if (planet.biome.hazard !== 'None') ui.log(`HAZARD: ${planet.biome.hazard}`, 'warn');
+  ui.log('Fly down and land · Space climbs · Ctrl descends · F disembarks · T toggles cockpit', '');
+}
+
+function leaveAtmosphere(exit) {
+  const planetIndex = game.surface.planet.index;
+  audio.sweep(140, 900, 1.4, 'sawtooth', 0.3);
+  game.space.setSystem(game.system, { fromPlanet: planetIndex });
+  // come out of the atmosphere above the point we left from
+  const holder = game.space.planets[planetIndex];
+  if (holder) {
+    const p = holder.userData.planet;
+    const dir = new THREE.Vector3(
+      Math.cos(exit.lat) * Math.cos(exit.lon),
+      Math.sin(exit.lat),
+      Math.cos(exit.lat) * Math.sin(exit.lon)
+    ).normalize();
+    game.space.ship.position.copy(holder.position).addScaledVector(dir, p.radius * 1.5);
+    game.space.faceShip(holder.position.clone().addScaledVector(dir, p.radius * 6));
+    game.space.camPos.copy(game.space.ship.position);
+    game.space.transitCooldown = 6;
+    game.space.throttle = 0.5;
+  }
+  game.mode = 'space';
+  ui.mode = 'space';
+  ui.log('LEFT THE ATMOSPHERE — welcome back to the void', 'good');
+}
+
 function landOn(planet) {
   ui.loading(`Entering atmosphere of ${planet.name}…`);
   audio.land();
@@ -415,6 +452,16 @@ addEventListener('keydown', (e) => {
     case 'BracketLeft': if (game.mode === 'surface' && game.surface.buildMode) game.surface.cycleBuildType(-1); break;
     case 'BracketRight': if (game.mode === 'surface' && game.surface.buildMode) game.surface.cycleBuildType(1); break;
     case 'KeyV': if (game.mode === 'surface') game.surface.summonExocraft(); break;
+    case 'KeyT': {
+      const active = game.mode === 'space' ? game.space : game.surface;
+      if (game.mode === 'surface' && !game.surface.piloting) {
+        ui.log('Cockpit view is available while flying your ship', 'warn');
+        break;
+      }
+      const on = active.toggleCockpit();
+      ui.log(on ? 'COCKPIT VIEW' : 'CHASE VIEW', '');
+      break;
+    }
     case 'KeyH':
       game.photoMode = !game.photoMode;
       ui.showHUD(!game.photoMode);
@@ -461,8 +508,14 @@ function loop() {
       else if (game.space.wormholeRequest) wormholeTravel();
       else if (game.space.anomalyRequest) dockAtAnomaly();
       else if (game.space.atlasRequest) takeAtlasSeed();
+      else if (game.space.entryRequest) atmosphericEntry(game.space.entryRequest);
       else if (game.space.landRequest) landOn(game.space.landRequest);
       else if (game.space.dockRequest) dockAtStation();
+    } else if (game.surface.exitRequest) {
+      const ex = game.surface.exitRequest;
+      game.surface.exitRequest = null;
+      game.surface.piloting = false;
+      leaveAtmosphere(ex);
     } else if (game.surface.launchRequest) {
       launchToSpace();
     } else if (game.surface.portalRequest) {

@@ -338,3 +338,9 @@ kbd { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-fa
   flex: 1; overflow-y: auto; border: 1px solid var(--line); background: var(--panel);
   border-radius: 4px; padding: 14px 18px; margin-bottom: 20px; min-height: 240px;
 }
+
+/* atmospheric entry heat */
+#entry-fx {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s linear; mix-blend-mode: screen;
+}

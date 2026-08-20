@@ -4,6 +4,7 @@ import {
   planetTextures, makeStarfield, makeNebula, buildShip, buildPirate,
   buildStation, radialSprite, atmosphereMaterial, buildFreighter,
   buildCargoPod, buildBlackHole, buildWormhole, buildAnomaly, buildAtlasInterface,
+  buildCockpit, drawCockpitScreens,
 } from './assets3d.js';
 import * as story from './story.js';
 import * as missions from './missions.js';
@@ -72,6 +73,14 @@ export class SpaceMode {
     this.shipClass = state.ship;
     this.scene.add(this.ship);
 
+    // first-person cockpit, parented to the ship
+    this.cockpit = buildCockpit(stats.shipDef.palette);
+    this.cockpit.position.set(0, 0.35, -1.0);
+    this.cockpit.visible = false;
+    this.ship.add(this.cockpit);
+    this.cockpitView = false;
+    this.screenTimer = 0;
+
     // pooled bolts
     this.bolts = [];
     this.boltPool = [];
@@ -122,6 +131,8 @@ export class SpaceMode {
     this.anomalyRequest = false;
     this.atlas = null;
     this.atlasRequest = false;
+    this.entryRequest = null;
+    this.entryProgress = 0;
     this.anomalyHold = 0;
     this.blackHoleRequest = false;
     this.coreRequest = false;
@@ -139,8 +150,22 @@ export class SpaceMode {
     this.ship = buildShip(stats.shipDef.palette);
     this.ship.position.copy(pos);
     this.ship.quaternion.copy(quat);
+    this.cockpit = buildCockpit(stats.shipDef.palette);
+    this.cockpit.position.set(0, 0.35, -1.0);
+    this.cockpit.visible = this.cockpitView;
+    this.ship.add(this.cockpit);
     this.scene.add(this.ship);
     this.shipClass = state.ship;
+  }
+
+  toggleCockpit() {
+    this.cockpitView = !this.cockpitView;
+    this.cockpit.visible = this.cockpitView;
+    // hide the hull from inside so it does not clip over the view
+    for (const child of this.ship.children) {
+      if (child !== this.cockpit && child.isMesh) child.visible = !this.cockpitView;
+    }
+    return this.cockpitView;
   }
 
   // Object3D.lookAt aims +Z at the target; our ship flies down -Z, so do it properly.
@@ -473,6 +498,8 @@ export class SpaceMode {
     this.anomalyRequest = false;
     this.atlas = null;
     this.atlasRequest = false;
+    this.entryRequest = null;
+    this.entryProgress = 0;
     const m = input.consumeMouse();
 
     const sens = 0.0022;
@@ -500,27 +527,69 @@ export class SpaceMode {
     const forward = FWD.clone().applyQuaternion(ship.quaternion);
     ship.position.addScaledVector(forward, this.speed * dt);
 
-    if (near.holder && near.dist < 30) {
+    // Planets are enterable: only bounce off while the entry handoff is on cooldown.
+    if (near.holder && near.dist < 30 && this.transitCooldown > 0) {
       const p = near.holder.userData.planet;
       const dir = ship.position.clone().sub(near.holder.position).normalize();
       ship.position.copy(near.holder.position).addScaledVector(dir, p.radius + 30);
       this.speed *= 0.2;
     }
 
-    // camera
+    // camera — cockpit or chase
     this.camShake = Math.max(0, this.camShake - dt * 2.5);
     const shake = new THREE.Vector3(
       (Math.random() - 0.5) * this.camShake * 4,
       (Math.random() - 0.5) * this.camShake * 4,
       0
     );
-    const camOffset = new THREE.Vector3(0, 3.4, 13.5 + this.pulse * 10).add(shake).applyQuaternion(ship.quaternion);
-    this.camPos.lerp(ship.position.clone().add(camOffset), Math.min(1, dt * 6));
-    this.camera.position.copy(this.camPos);
-    this.camera.up.copy(UP.clone().applyQuaternion(ship.quaternion));
-    this.camera.lookAt(ship.position.clone().addScaledVector(forward, 40));
-    this.camera.fov = 72 + this.pulse * 24 + (boosting ? 7 : 0);
+
+    if (this.cockpitView) {
+      const seat = new THREE.Vector3(0, 0.62, -1.35)
+        .add(shake.clone().multiplyScalar(0.06))
+        .applyQuaternion(ship.quaternion);
+      this.camPos.copy(ship.position).add(seat);
+      this.camera.position.copy(this.camPos);
+      this.camera.up.copy(UP.clone().applyQuaternion(ship.quaternion));
+      this.camera.lookAt(ship.position.clone().addScaledVector(forward, 200));
+      this.camera.fov = 78 + this.pulse * 16 + (boosting ? 4 : 0);
+    } else {
+      const camOffset = new THREE.Vector3(0, 3.4, 13.5 + this.pulse * 10).add(shake).applyQuaternion(ship.quaternion);
+      this.camPos.lerp(ship.position.clone().add(camOffset), Math.min(1, dt * 6));
+      this.camera.position.copy(this.camPos);
+      this.camera.up.copy(UP.clone().applyQuaternion(ship.quaternion));
+      this.camera.lookAt(ship.position.clone().addScaledVector(forward, 40));
+      this.camera.fov = 72 + this.pulse * 24 + (boosting ? 7 : 0);
+    }
     this.camera.updateProjectionMatrix();
+
+    // live cockpit displays
+    if (this.cockpitView) {
+      this.screenTimer -= dt;
+      if (this.screenTimer <= 0) {
+        this.screenTimer = 0.2;
+        const near2 = this.nearestPlanet();
+        drawCockpitScreens(this.cockpit, {
+          title: 'FLIGHT',
+          speed: Math.round(this.speed).toLocaleString(),
+          speedLabel: 'u/s',
+          right1: this.system?.name || '',
+          right2: near2.holder ? near2.holder.userData.planet.name : 'DEEP SPACE',
+          right3: near2.holder ? `${Math.round(near2.dist)} u to surface` : '',
+          bars: [
+            { label: 'SHIELD', value: state.shields / stats.shieldMax, color: '#ffe066' },
+            { label: 'HULL', value: state.shipHealth / 100, color: '#9dffc4' },
+            { label: 'THRUSTER', value: state.launchFuel / 100, color: '#ff7de0' },
+          ],
+          statusTitle: 'CONTACTS',
+          status: [
+            `Hostiles ${this.enemies.length}`,
+            this.station ? 'Station in system' : 'No station',
+            this.wormhole ? 'Wormhole detected' : '',
+            this.atlas && !this.atlas.userData.taken ? 'Atlas signal' : '',
+          ].filter(Boolean),
+        });
+      }
+    }
 
     const t = 0.5 + this.speed / maxSpeed;
     ship.userData.thruster.children.forEach((s) => s.scale.set(1.2 * t, 1.2 * t, 1));
@@ -578,6 +647,33 @@ export class SpaceMode {
         if (d < 620 && this.transitCooldown <= 0) this.blackHoleRequest = true;
       }
     }
+    // --- seamless atmospheric entry: just fly at a planet
+    const nearP = this.nearestPlanet();
+    if (nearP.holder) {
+      const p = nearP.holder.userData.planet;
+      const surfaceDist = nearP.dist;
+      const entryBand = p.radius * 0.32;
+      this.entryProgress = surfaceDist < entryBand ? 1 - Math.max(0, surfaceDist) / entryBand : 0;
+      if (this.entryProgress > 0.02) {
+        this.camShake = Math.max(this.camShake, this.entryProgress * 0.7);
+        ui.entryEffect(this.entryProgress, p.biome.sky);
+      }
+      if (surfaceDist < Math.max(55, p.radius * 0.05) && this.transitCooldown <= 0) {
+        // work out where on the globe we hit, so the terrain we land on is consistent
+        const local = this.ship.position.clone().sub(nearP.holder.position).normalize();
+        const lat = Math.asin(THREE.MathUtils.clamp(local.y, -1, 1));
+        const lon = Math.atan2(local.z, local.x);
+        this.entryRequest = {
+          planet: p,
+          lat, lon,
+          speed: this.speed,
+          heading: FWD.clone().applyQuaternion(this.ship.quaternion),
+        };
+      }
+    } else {
+      this.entryProgress = 0;
+    }
+
     // stars are hot: coronal damage, unless you are diving into the core on purpose
     const sunDist = this.sun.position.distanceTo(this.ship.position);
     const sunRadius = 1500 * this.sun.scale.x;
@@ -905,14 +1001,10 @@ export class SpaceMode {
           }
         } else if (!input.down('KeyF')) this.scanTimer = 0;
 
-        if (d < p.radius * 0.55) {
-          prompt = 'Hold <b>E</b> to land';
-          if (input.down('KeyE')) {
-            this.landHold += dt;
-            if (this.landHold > 0.7) { this.landHold = 0; this.landRequest = p; }
-          } else this.landHold = 0;
-        } else if (d < p.radius * 1.6) {
-          prompt = 'Descend closer to land';
+        if (d < p.radius * 0.35) {
+          prompt = 'ATMOSPHERIC ENTRY — keep descending';
+        } else if (d < p.radius * 1.2) {
+          prompt = 'Fly toward the surface to enter the atmosphere';
         }
       }
     }

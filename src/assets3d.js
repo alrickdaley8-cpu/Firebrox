@@ -911,3 +911,182 @@ export function buildAtlasInterface() {
   g.add(glow);
   return g;
 }
+
+// ---------------------------------------------------------------- cockpit interior
+// A first-person cockpit: dash, canopy struts, seat, side consoles and live screens.
+export function buildCockpit(palette = {}) {
+  const g = new THREE.Group();
+  const hull = new THREE.MeshStandardMaterial({
+    color: palette.hull || '#c9d2dc', metalness: 0.55, roughness: 0.42, side: THREE.DoubleSide,
+  });
+  const dark = new THREE.MeshStandardMaterial({ color: '#22262d', metalness: 0.5, roughness: 0.6 });
+  const trim = new THREE.MeshStandardMaterial({
+    color: palette.trim || '#ff7a3d', metalness: 0.4, roughness: 0.35,
+    emissive: palette.trim || '#ff7a3d', emissiveIntensity: 0.25,
+  });
+  const seatMat = new THREE.MeshStandardMaterial({ color: '#2b3a46', roughness: 0.85 });
+
+  // shell around the pilot (open at the front)
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 2.4, 16, 1, true), hull);
+  shell.position.set(0, 0.1, 0.35);
+  shell.rotation.x = Math.PI / 2;
+  g.add(shell);
+
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), dark);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, -0.95, 0.3);
+  g.add(floor);
+
+  // dashboard
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 0.75), dark);
+  dash.position.set(0, -0.55, -1.15);
+  dash.rotation.x = -0.35;
+  g.add(dash);
+
+  const dashTrim = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.09, 0.09), trim);
+  dashTrim.position.set(0, -0.32, -1.45);
+  g.add(dashTrim);
+
+  // three live screens
+  const screens = [];
+  const makeScreen = (w, h, x, y, z, ry) => {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.96 })
+    );
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(-0.5, ry, 0);
+    g.add(mesh);
+    screens.push({ canvas: c, ctx: c.getContext('2d'), tex });
+    return mesh;
+  };
+  makeScreen(0.86, 0.42, 0, -0.5, -1.32, 0);
+  makeScreen(0.62, 0.34, -0.94, -0.5, -1.2, 0.55);
+  makeScreen(0.62, 0.34, 0.94, -0.5, -1.2, -0.55);
+
+  // canopy struts framing the view
+  for (const s of [-1, 1]) {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 2.1), hull);
+    strut.position.set(s * 0.95, 0.5, -0.7);
+    strut.rotation.set(0.25, s * 0.22, 0);
+    g.add(strut);
+
+    const console_ = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.34, 1.1), dark);
+    console_.position.set(s * 1.25, -0.62, -0.35);
+    console_.rotation.z = -s * 0.25;
+    g.add(console_);
+
+    for (let i = 0; i < 4; i++) {
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.09), new THREE.MeshStandardMaterial({
+        color: i % 2 ? '#63e6ff' : '#9dffc4',
+        emissive: i % 2 ? '#63e6ff' : '#9dffc4', emissiveIntensity: 2.2,
+      }));
+      led.position.set(s * 1.2, -0.45, -0.75 + i * 0.24);
+      g.add(led);
+    }
+
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 8), trim);
+    grip.position.set(s * 0.62, -0.72, -0.62);
+    grip.rotation.x = -0.35;
+    g.add(grip);
+  }
+
+  const topArch = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.07, 8, 22, Math.PI), hull);
+  topArch.position.set(0, 0.42, -0.75);
+  topArch.rotation.set(1.25, 0, 0);
+  g.add(topArch);
+
+  // pilot seat behind the camera
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.22, 0.95), seatMat);
+  seat.position.set(0, -0.85, 0.55);
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.25, 0.2), seatMat);
+  back.position.set(0, -0.28, 1.0);
+  back.rotation.x = 0.16;
+  g.add(back);
+
+  const glow = new THREE.PointLight('#7fd6ff', 0.9, 6, 2);
+  glow.position.set(0, -0.2, -0.9);
+  g.add(glow);
+
+  g.userData.screens = screens;
+  return g;
+}
+
+// Redraws the cockpit MFDs. Cheap enough to run a few times a second.
+export function drawCockpitScreens(cockpit, data) {
+  const screens = cockpit?.userData?.screens;
+  if (!screens) return;
+
+  const [main, left, right] = screens;
+
+  const bg = (ctx, w, h) => {
+    ctx.fillStyle = 'rgba(4,14,22,0.95)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(99,230,255,0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(3, 3, w - 6, h - 6);
+  };
+
+  // main: speed + altitude ladder
+  {
+    const { ctx, canvas } = main;
+    bg(ctx, canvas.width, canvas.height);
+    ctx.fillStyle = '#dff3ff';
+    ctx.font = '600 22px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(data.title || 'FLIGHT', 14, 30);
+    ctx.font = '700 34px ui-monospace, monospace';
+    ctx.fillStyle = '#ff9f43';
+    ctx.fillText(data.speed ?? '0', 14, 72);
+    ctx.font = '14px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(190,225,245,0.8)';
+    ctx.fillText(data.speedLabel || 'u/s', 14, 94);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#9dffc4';
+    ctx.font = '600 20px ui-monospace, monospace';
+    ctx.fillText(data.right1 || '', canvas.width - 14, 46);
+    ctx.fillStyle = '#63e6ff';
+    ctx.fillText(data.right2 || '', canvas.width - 14, 76);
+    ctx.fillStyle = 'rgba(190,225,245,0.7)';
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillText(data.right3 || '', canvas.width - 14, 102);
+    main.tex.needsUpdate = true;
+  }
+
+  // left: shields / hull bars
+  {
+    const { ctx, canvas } = left;
+    bg(ctx, canvas.width, canvas.height);
+    ctx.font = '13px ui-monospace, monospace';
+    const bars = data.bars || [];
+    bars.forEach((b, i) => {
+      const y = 26 + i * 34;
+      ctx.fillStyle = 'rgba(190,225,245,0.75)';
+      ctx.fillText(b.label, 14, y);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(14, y + 6, canvas.width - 28, 10);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(14, y + 6, (canvas.width - 28) * Math.max(0, Math.min(1, b.value)), 10);
+    });
+    left.tex.needsUpdate = true;
+  }
+
+  // right: contacts / status text
+  {
+    const { ctx, canvas } = right;
+    bg(ctx, canvas.width, canvas.height);
+    ctx.font = '13px ui-monospace, monospace';
+    ctx.fillStyle = '#63e6ff';
+    ctx.fillText(data.statusTitle || 'STATUS', 14, 26);
+    ctx.fillStyle = 'rgba(223,243,255,0.9)';
+    (data.status || []).slice(0, 4).forEach((line, i) => {
+      ctx.fillText(line, 14, 50 + i * 20);
+    });
+    right.tex.needsUpdate = true;
+  }
+}

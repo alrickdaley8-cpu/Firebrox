@@ -18,6 +18,25 @@ npm i -D jsdom && npm test   # headless smoke test: boots every module,
                              # drives thousands of frames, asserts zero errors
 ```
 
+## Cockpit & seamless landings
+
+* **First-person cockpit** (`T`) — a full interior: dashboard, canopy struts, side consoles
+  with blinking LEDs, control grips, pilot seat, interior lighting, and **three live MFD
+  screens** rendered from canvas textures showing speed, altitude, target, shield/hull/fuel
+  bars and contacts. Works both in space and while flying in atmosphere; the hull hides
+  itself from the inside so nothing clips your view.
+* **Seamless atmospheric entry** — no "hold E to land", no cut. Fly your ship at a planet
+  and you punch through the atmosphere: heat glow builds across the screen, the camera
+  shakes, and you come out the other side *still flying your ship*, now over streaming
+  terrain. Where you hit the globe determines where you arrive — entry point is mapped
+  lat/long → surface coordinates, so the same approach always brings you to the same ground.
+* **Atmospheric flight** — proper low-altitude flight model with throttle, pitch/yaw/roll,
+  vertical thrusters (`Space`/`Ctrl`), hover assist that releases near the ground so you
+  actually settle on your gear, and hard-landing hull damage if you slam it in.
+* **Land anywhere, walk away** — set down, press `F` to disembark, explore on foot, then
+  board again (`E`) and climb. Pass 1,400 m on the way up and you slide straight back into
+  space above the point you left from. `Q` at the ship still does an instant launch to orbit.
+
 ## The "everything" update
 
 * **Base building** — eight part types (habitat pods, storage containers, signal beacons,
@@ -153,7 +172,8 @@ and buy hyperdrive coils to reach further stars. Everything autosaves to localSt
 | **Flight** | `W`/`S` throttle · mouse steer · `A`/`D` roll · `Shift` boost · `Space` pulse warp |
 | **Combat** | Left-click photon cannons |
 | **On foot** | `WASD` move · mouse look · `Space` jump / jetpack · `Shift` sprint · left-click mining beam |
-| **Interact** | Hold `E` to land, dock or launch · hold `F` to scan planets, lifeforms and ruins |
+| **Flying** | Fly at a planet to enter its atmosphere · `Space`/`Ctrl` climb and descend · `F` disembark · `T` cockpit view |
+| **Interact** | Hold `E` to dock, `E` to board your ship, `Q` for instant launch · hold `F` to scan planets, lifeforms and ruins |
 | **On-foot combat** | Right-click boltcaster · sentinels escalate as you mine |
 | **Building** | `B` build mode · `[` `]` cycle parts · left-click place · `X` demolish |
 | **Terraform** | `Z` dig · `X` raise (outside build mode) |

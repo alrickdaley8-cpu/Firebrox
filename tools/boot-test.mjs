@@ -138,21 +138,41 @@ key('KeyH'); frames(2);
 console.log('photo mode hides HUD:', document.getElementById('hud').classList.contains('hidden'));
 key('KeyH'); frames(2);
 
-// land on a planet the way a player does: fly close, hold E
+// cockpit view through the real key handler
 const { input } = await import(ROOT + '/src/input.js');
 input.locked = true;
+key('KeyT'); frames(4);
+console.log('cockpit view in space:', G.game.space.cockpitView);
+key('KeyT'); frames(4);
+
+// seamless entry: fly at the planet, no keypress needed
 const holder = G.game.space.planets[0];
 const pl = holder.userData.planet;
-G.game.space.ship.position.copy(holder.position).add({ x: 0, y: 0, z: pl.radius * 1.15 });
+G.game.space.transitCooldown = 0;
+G.game.space.ship.position.copy(holder.position).add({ x: 0, y: 0, z: pl.radius * 1.04 });
 G.game.space.throttle = 0;
 G.game.space.speed = 0;
-input.keys.add('KeyE');
-frames(90);
-input.keys.delete('KeyE');
-await new Promise((r) => setTimeout(r, 800));
-frames(90);
-console.log('mode after landing:', G.game.mode, '· planet:', G.game.surface.planet?.name,
-  '· chunks:', G.game.surface.chunks.size);
+frames(120);
+console.log('mode after entry:', G.game.mode, '· planet:', G.game.surface.planet?.name,
+  '· piloting:', G.game.surface.piloting, '· chunks:', G.game.surface.chunks.size);
+key('KeyT'); frames(4);
+console.log('cockpit view in atmosphere:', G.game.surface.cockpitView,
+  '· dash screens drawn:', G.game.surface.cockpit.userData.screens.length);
+key('KeyT'); frames(4);
+
+// fly down and land the ship
+input.keys.add('ControlLeft');
+for (let i = 0; i < 40 && G.game.surface.piloting; i++) {
+  frames(30);
+  const alt = G.game.surface.ship.position.y - G.game.surface.height(G.game.surface.ship.position.x, G.game.surface.ship.position.z);
+  if (alt < 2.5) break;
+}
+input.keys.delete('ControlLeft');
+frames(30);
+const landedAlt = G.game.surface.ship.position.y - G.game.surface.height(G.game.surface.ship.position.x, G.game.surface.ship.position.z);
+console.log('ship set down at', landedAlt.toFixed(1), 'm');
+input.keys.add('KeyF'); frames(6); input.keys.delete('KeyF'); frames(4);
+console.log('disembarked and on foot:', !G.game.surface.piloting);
 
 // build mode through the real key handler
 key('KeyB'); frames(5);
@@ -185,12 +205,14 @@ input.keys.add('KeyW'); frames(90); input.keys.delete('KeyW');
 console.log('exocraft moving:', G.game.surface.exoVel.length().toFixed(1), 'm/s');
 input.keys.add('KeyF'); frames(4); input.keys.delete('KeyF'); frames(2);
 console.log('left exocraft:', !G.game.surface.inExocraft);
-input.keys.add('KeyE');
+// board and fly back to orbit
 G.game.surface.pos.copy(G.game.surface.ship.position).add({ x: 2, y: 2, z: 2 });
-frames(30);
-input.keys.delete('KeyE');
-await new Promise((r) => setTimeout(r, 800));
-frames(60);
+input.keys.add('KeyE'); frames(10); input.keys.delete('KeyE'); frames(4);
+console.log('re-boarded the ship:', G.game.surface.piloting);
+input.keys.add('Space'); input.keys.add('KeyW');
+for (let i = 0; i < 80 && G.game.mode === 'surface'; i++) frames(30);
+input.keys.delete('Space'); input.keys.delete('KeyW');
+frames(20);
 console.log('mode after launch:', G.game.mode);
 console.log('ERRORS:', errors.length ? errors.slice(0, 4) : 'none');
 process.exit(errors.length ? 1 : 0);

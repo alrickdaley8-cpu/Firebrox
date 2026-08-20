@@ -8,7 +8,7 @@ import { ui } from './ui.js';
 import {
   buildShip, radialSprite, buildMonolith, buildCrashedShip, buildOutpost,
   makeStarfield, buildSentinel, buildAurora, buildPortal,
-  buildPart, buildCrop, buildExocraft,
+  buildPart, buildCrop, buildExocraft, buildCockpit, drawCockpitScreens,
 } from './assets3d.js';
 import * as building from './building.js';
 import * as aliens from './aliens.js';
@@ -74,6 +74,18 @@ export class SurfaceMode {
     // claimable wrecks
     this.wreck = null;
     this.wreckRequest = null;
+
+    // --- atmospheric ship flight
+    this.piloting = false;
+    this.shipVel = new THREE.Vector3();
+    this.shipYaw = 0;
+    this.shipPitch = 0;
+    this.shipRoll = 0;
+    this.shipSpeed = 0;
+    this.exitRequest = null;
+    this.cockpitView = false;
+    this.screenTimer = 0;
+    this.entryFx = 0;
     this.bob = 0;
     this.stepTimer = 0;
 
@@ -145,6 +157,10 @@ export class SurfaceMode {
     this.ship = buildShip();
     this.ship.scale.setScalar(1.7);
     this.scene.add(this.ship);
+    this.cockpit = buildCockpit();
+    this.cockpit.position.set(0, 0.35, -1.0);
+    this.cockpit.visible = false;
+    this.ship.add(this.cockpit);
     this.shipLight = new THREE.PointLight('#8fdcff', 1.2, 60, 2);
     this.scene.add(this.shipLight);
 
@@ -691,6 +707,222 @@ export class SurfaceMode {
     }
   }
 
+  // -------------------------------------------------- atmospheric flight
+  // Where on the planet's surface plane a lat/long maps to (and back again).
+  static CIRCUM = 48000;
+
+  latLonToXZ(lat, lon) {
+    const C = SurfaceMode.CIRCUM;
+    return {
+      x: (lon / (Math.PI * 2)) * C,
+      z: (lat / (Math.PI / 2)) * (C / 4),
+    };
+  }
+
+  xzToLatLon(x, z) {
+    const C = SurfaceMode.CIRCUM;
+    return {
+      lon: (x / C) * Math.PI * 2,
+      lat: THREE.MathUtils.clamp((z / (C / 4)) * (Math.PI / 2), -1.45, 1.45),
+    };
+  }
+
+  toggleCockpit() {
+    this.cockpitView = !this.cockpitView;
+    this.cockpit.visible = this.cockpitView && this.piloting;
+    for (const child of this.ship.children) {
+      if (child !== this.cockpit && child.isMesh) child.visible = !(this.cockpitView && this.piloting);
+    }
+    return this.cockpitView;
+  }
+
+  // Called when the player flies in from space.
+  beginAtmosphericFlight(entry) {
+    const spot = this.latLonToXZ(entry.lat, entry.lon);
+    const ground = this.height(spot.x, spot.z);
+    this.piloting = true;
+    this.entryFx = 1;
+    this.ship.position.set(spot.x, ground + 620, spot.z);
+    this.shipYaw = Math.atan2(-entry.heading.x, -entry.heading.z);
+    this.shipPitch = -0.42;
+    this.shipRoll = 0;
+    this.shipSpeed = 240;
+    this.shipVel.set(0, -70, 0);
+    this.pos.copy(this.ship.position);
+    this.vel.set(0, 0, 0);
+    this.yaw = this.shipYaw;
+    this.pitch = this.shipPitch;
+    this.ensureChunks(true);
+    this.cockpit.visible = this.cockpitView;
+    for (const child of this.ship.children) {
+      if (child !== this.cockpit && child.isMesh) child.visible = !this.cockpitView;
+    }
+  }
+
+  // Board the parked ship again.
+  boardShip() {
+    this.piloting = true;
+    this.shipYaw = this.yaw;
+    this.shipPitch = 0.05;
+    this.shipSpeed = 0;
+    this.shipVel.set(0, 0, 0);
+    this.ship.position.y = this.height(this.ship.position.x, this.ship.position.z) + 2;
+    this.cockpit.visible = this.cockpitView;
+    for (const child of this.ship.children) {
+      if (child !== this.cockpit && child.isMesh) child.visible = !this.cockpitView;
+    }
+    ui.log('THRUSTERS ONLINE — Space to climb, Ctrl to descend, F to disembark', 'good');
+  }
+
+  disembark() {
+    this.piloting = false;
+    this.cockpit.visible = false;
+    for (const child of this.ship.children) if (child.isMesh) child.visible = true;
+    const side = new THREE.Vector3(Math.cos(this.shipYaw), 0, -Math.sin(this.shipYaw));
+    const p = this.ship.position.clone().addScaledVector(side, 5);
+    this.pos.set(p.x, this.height(p.x, p.z) + EYE, p.z);
+    this.vel.set(0, 0, 0);
+    this.yaw = this.shipYaw;
+    this.pitch = -0.05;
+  }
+
+  updateShipFlight(dt) {
+    const m = input.consumeMouse();
+    this.shipYaw -= m.x * 0.0022;
+    this.shipPitch = THREE.MathUtils.clamp(this.shipPitch - m.y * 0.0022, -1.2, 1.2);
+
+    const roll = (input.down('KeyA') ? 1 : 0) - (input.down('KeyD') ? 1 : 0);
+    this.shipRoll += (roll * 0.5 - this.shipRoll) * Math.min(1, dt * 4);
+
+    const boost = input.down('ShiftLeft') || input.down('ShiftRight');
+    const maxSpeed = boost ? 420 : 200;
+    if (input.down('KeyW')) this.shipSpeed += dt * 190;
+    else if (input.down('KeyS')) this.shipSpeed -= dt * 220;
+    else this.shipSpeed *= 1 - Math.min(1, dt * 0.7);
+    this.shipSpeed = THREE.MathUtils.clamp(this.shipSpeed, -60, maxSpeed);
+
+    const quat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(this.shipPitch, this.shipYaw, this.shipRoll, 'YXZ')
+    );
+    this.ship.quaternion.slerp(quat, Math.min(1, dt * 8));
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+    const vel = forward.clone().multiplyScalar(this.shipSpeed);
+
+    // vertical thrusters + gravity assist hover
+    let lift = 0;
+    if (input.down('Space')) lift += 120;
+    if (input.down('ControlLeft') || input.down('ControlRight')) lift -= 110;
+    const ground = this.height(this.ship.position.x, this.ship.position.z);
+    const altitude = this.ship.position.y - ground;
+    // Hover assist holds you up while manoeuvring, but lets go near the ground so
+    // the ship actually settles onto its landing gear.
+    const settling = lift <= 0 && Math.abs(this.shipSpeed) < 40;
+    const hoverBand = settling ? 0 : 60;
+    const hover = altitude < hoverBand ? (1 - altitude / hoverBand) * this.gravity * 0.9 : 0;
+    vel.y += lift + hover - this.gravity * (settling ? 0.85 : 0.55);
+
+    this.shipVel.lerp(vel, Math.min(1, dt * 5));
+    this.ship.position.addScaledVector(this.shipVel, dt);
+
+    // ground contact — land the ship
+    const minY = ground + 2.2;
+    const landing = this.ship.position.y <= minY + 0.4;
+    if (landing) {
+      this.ship.position.y = minY;
+      const impact = Math.max(0, -this.shipVel.y);
+      this.shipVel.y = 0;
+      this.shipSpeed *= 0.82;
+      if (impact > 90) {
+        state.shipHealth = Math.max(1, state.shipHealth - impact * 0.08);
+        ui.log('HARD LANDING — hull damaged', 'bad');
+        audio.blip(90, 0.25, 'square', 0.3);
+      }
+      if (Math.abs(this.shipSpeed) < 24) {
+        this.shipPitch += (0 - this.shipPitch) * Math.min(1, dt * 4);
+        this.shipRoll += (0 - this.shipRoll) * Math.min(1, dt * 4);
+      }
+    }
+
+    // leaving the atmosphere hands you back to space
+    if (altitude > 1400 && this.shipVel.y > 20) {
+      const ll = this.xzToLatLon(this.ship.position.x, this.ship.position.z);
+      this.exitRequest = { lat: ll.lat, lon: ll.lon };
+    }
+
+    // the camera rides the ship
+    this.pos.copy(this.ship.position);
+    if (this.cockpitView) {
+      const seat = new THREE.Vector3(0, 0.62 * 1.7, -1.35 * 1.7).applyQuaternion(this.ship.quaternion);
+      this.camera.position.copy(this.ship.position).add(seat);
+      this.camera.quaternion.copy(this.ship.quaternion);
+      this.camera.fov = 80;
+    } else {
+      const off = new THREE.Vector3(0, 6, 22).applyQuaternion(this.ship.quaternion);
+      this.camera.position.copy(this.ship.position).add(off);
+      this.camera.up.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+      this.camera.lookAt(this.ship.position.clone().addScaledVector(forward, 60));
+      this.camera.fov = state.settings.fov + Math.min(14, Math.abs(this.shipSpeed) / 24);
+    }
+    this.camera.updateProjectionMatrix();
+    this.yaw = this.shipYaw;
+
+    // thruster flare scales with throttle
+    const t = 0.6 + Math.min(1.4, Math.abs(this.shipSpeed) / 180);
+    this.ship.userData.thruster.children.forEach((sp) => sp.scale.set(1.3 * t, 1.3 * t, 1));
+
+    // entry heat fades out
+    if (this.entryFx > 0) {
+      this.entryFx = Math.max(0, this.entryFx - dt * 0.45);
+      ui.entryEffect(this.entryFx, this.planet.biome.sky);
+    }
+
+    // cockpit displays
+    if (this.cockpitView) {
+      this.screenTimer -= dt;
+      if (this.screenTimer <= 0) {
+        this.screenTimer = 0.2;
+        drawCockpitScreens(this.cockpit, {
+          title: 'ATMOSPHERIC',
+          speed: Math.round(Math.abs(this.shipSpeed)),
+          speedLabel: 'm/s',
+          right1: this.planet.name,
+          right2: `ALT ${Math.round(altitude)} m`,
+          right3: this.planet.biome.label + ' · ' + this.planet.weather,
+          bars: [
+            { label: 'HULL', value: state.shipHealth / 100, color: '#9dffc4' },
+            { label: 'THRUSTER', value: state.launchFuel / 100, color: '#ff7de0' },
+            { label: 'LIFE', value: state.life / 100, color: '#63e6ff' },
+          ],
+          statusTitle: 'SURFACE',
+          status: [
+            `Sentinels ${this.planet.sentinels}`,
+            `Gravity ${this.planet.gravity.toFixed(2)}g`,
+            landing ? 'LANDED — F to disembark' : 'Airborne',
+          ],
+        });
+      }
+    }
+
+    audio.hum(Math.min(1, Math.abs(this.shipSpeed) / 260));
+
+    // interactions while piloting
+    let prompt = '';
+    const canDisembark = altitude < 7 && Math.abs(this.shipSpeed) < 30 && Math.abs(this.shipVel.y) < 26;
+    if (canDisembark) {
+      prompt = 'Press <b>F</b> to disembark · <b>Space</b> to lift off';
+      if (input.down('KeyF')) { this.disembark(); input.keys.delete('KeyF'); }
+    } else {
+      prompt = `ALT ${Math.round(altitude)} m · climb above 1400 m to leave the atmosphere`;
+    }
+    ui.prompt(prompt);
+    ui.target(null);
+
+    this.ensureChunks();
+    this.updateSky(dt);
+    this.updateCreatures(dt);
+  }
+
   // -------------------------------------------------- base building
   spawnPart(record) {
     const mesh = buildPart(record.type, this.crystalColor.getStyle());
@@ -1167,6 +1399,11 @@ export class SurfaceMode {
 
   // -------------------------------------------------- player
   update(dt) {
+    if (this.piloting) {
+      this.editCooldown = Math.max(0, this.editCooldown - dt);
+      this.updateShipFlight(dt);
+      return;
+    }
     const m = input.consumeMouse();
     this.yaw -= m.x * 0.0022;
     this.pitch = THREE.MathUtils.clamp(this.pitch - m.y * 0.0022, -1.45, 1.45);
@@ -1320,11 +1557,15 @@ export class SurfaceMode {
     const shipDist = this.ship.position.distanceTo(this.pos);
     if (shipDist < 15) {
       prompt = state.launchFuel >= 20
-        ? 'Press <b>E</b> to launch'
+        ? 'Press <b>E</b> to board and fly · hold <b>Q</b> to launch straight to orbit'
         : 'Thrusters dry — <b>G</b> to refuel (20 Di-hydrogen)';
       if (input.down('KeyE') && state.launchFuel >= 20) {
-        this.launchRequest = true;
+        this.boardShip();
         input.keys.delete('KeyE');
+      }
+      if (input.down('KeyQ') && state.launchFuel >= 20) {
+        this.launchRequest = true;
+        input.keys.delete('KeyQ');
       }
       if (input.down('KeyG') && hasResources({ dihydrogen: 20 })) {
         spendResources({ dihydrogen: 20 });
@@ -1588,6 +1829,8 @@ export class SurfaceMode {
       planet: `${p.name} · ${p.biome.label}`,
       sentinelLevel: Math.floor(this.wanted),
       exocraft: this.inExocraft,
+      piloting: this.piloting,
+      altitude: Math.round(this.pos.y - this.height(this.pos.x, this.pos.z)),
       buildMode: this.buildMode,
       conditions: `Hazard: ${p.biome.hazard} · ${p.weather}<br>`
         + `Sentinels: ${p.sentinels} · Gravity: ${p.gravity.toFixed(2)}g<br>`
