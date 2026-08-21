@@ -170,7 +170,8 @@ export async function runDemo({ messages, tools, settings, signal }, cb) {
 
   // ---- 4. Web search / factual questions --------------------------------------
   const searchIntent = /\b(search|find|look\s+up|google)\b/i.test(q);
-  if ((searchIntent || isFactualQuestion(q)) && available.has('web_search')) {
+  const selfRef = /(who are you|what are you|what can you do|help|capabilities|commands|your name|about you)/i.test(q);
+  if ((searchIntent || isFactualQuestion(q)) && !selfRef && available.has('web_search')) {
     const query = extractSearchQuery(q) || q;
     await streamText(`Searching the web for "${query}"…`, cb);
     const tc = call('web_search', { query });
