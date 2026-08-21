@@ -598,9 +598,8 @@
     }
   }
 
-  // ---------- Settings (modal + quick setup card on the main page) ----------
+  // ---------- Settings (modal) + key bar (paste key → talk) ----------
   const providerSelect = $('#providerSelect');
-  const quickProviderSelect = $('#quickProvider');
   const modelInput = $('#model');
   const modelList = $('#modelList');
   const apiKeyInput = $('#apiKey');
@@ -611,13 +610,29 @@
   const systemPromptInput = $('#systemPrompt');
   const keyStatus = $('#keyStatus');
 
-  const quickKeyInput = $('#quickKey');
-  const quickModelInput = $('#quickModel');
-  const quickSaveBtn = $('#quickSave');
-  const quickDemoBtn = $('#quickDemo');
-  const setupCard = $('#setupCard');
-  const setupBadge = $('#setupBadge');
-  const setupSub = $('#setupSub');
+  const keyBar = $('#keyBar');
+  const keyBarInput = $('#keyBarInput');
+  const keyBarGo = $('#keyBarGo');
+
+  // Detect the provider from an API key's prefix.
+  function detectProvider(key) {
+    const k = key.trim();
+    if (k.startsWith('sk-ant-')) return 'anthropic';
+    if (k.startsWith('gsk_')) return 'groq';
+    if (k.startsWith('AIza')) return 'gemini';
+    return 'openai'; // sk-… and anything OpenAI-compatible
+  }
+
+  // Show the key bar only when there's no live model: on the demo brain, or
+  // when the current provider still needs a key.
+  function refreshKeyBar() {
+    const c = state.config;
+    if (!c) return;
+    const meta = c.providers?.[c.provider] || {};
+    const needsSetup = c.provider === 'demo' || (meta.needsKey && !c.hasKey);
+    keyBar.classList.toggle('hidden', !needsSetup);
+    return needsSetup;
+  }
 
   function fillProviderSelect(select) {
     select.innerHTML = '';
@@ -630,7 +645,6 @@
 
   function populateProviders(providers) {
     fillProviderSelect(providerSelect);
-    fillProviderSelect(quickProviderSelect);
   }
 
   function providerMeta(key) {
@@ -649,14 +663,6 @@
     }
     modelInput.placeholder = meta?.defaultModel ? `e.g. ${meta.defaultModel}` : 'model name';
     apiKeyInput.disabled = !meta?.needsKey;
-    syncQuickCardPlaceholders();
-  }
-
-  function syncQuickCardPlaceholders() {
-    const meta = providerMeta(quickProviderSelect.value);
-    quickKeyInput.disabled = !meta?.needsKey;
-    quickKeyInput.placeholder = meta?.needsKey ? 'sk-…' : 'not required';
-    quickModelInput.placeholder = meta?.defaultModel || 'model name';
   }
 
   function loadConfigIntoForm() {
@@ -672,7 +678,7 @@
     keyStatus.textContent = c.hasKey ? '(saved ✓)' : '(not set)';
     syncModelSuggestions();
     updatePill();
-    refreshSetupCard();
+    refreshKeyBar();
   }
 
   function updatePill() {
@@ -684,23 +690,8 @@
     const needsKey = c.providers?.[c.provider]?.needsKey;
     dot.className = 'dot' + (needsKey && !c.hasKey ? ' warn' : '');
     hintEl.textContent = (needsKey && !c.hasKey)
-      ? `No API key set for ${label} — paste one above, or switch to the Demo brain.`
+      ? `No API key set for ${label} — paste one above, or switch to the Demo brain in Settings.`
       : `Running on ${label}${c.model ? ' · ' + c.model : ''}.`;
-  }
-
-  function refreshSetupCard() {
-    const c = state.config;
-    if (!c) return;
-    const meta = c.providers?.[c.provider] || {};
-    const connected = !meta.needsKey || c.hasKey;
-    setupCard.classList.toggle('connected', connected);
-    setupBadge.classList.toggle('on', connected);
-    setupBadge.textContent = connected ? 'connected ✓' : 'not connected';
-    quickProviderSelect.value = c.provider;
-    quickModelInput.value = c.model || '';
-    setupSub.textContent = connected
-      ? `Connected to ${meta.label || c.provider}${c.model ? ` · ${c.model}` : ''}. Manage advanced options in Settings.`
-      : `Paste an API key to power Firebrox with ${meta.label || 'your provider'} — or keep using the free offline demo brain.`;
   }
 
   async function applyConfig(patch) {
@@ -773,7 +764,6 @@
   });
 
   providerSelect.addEventListener('change', syncModelSuggestions);
-  quickProviderSelect.addEventListener('change', syncQuickCardPlaceholders);
   temperatureInput.addEventListener('input', () => { tempVal.textContent = temperatureInput.value; });
 
   $('#saveSettings').addEventListener('click', async () => {
@@ -781,38 +771,33 @@
     catch (err) { toast(err.message, true); }
   });
 
-  // Quick setup card on the main page
-  quickSaveBtn.addEventListener('click', async () => {
-    const patch = { provider: quickProviderSelect.value };
-    if (quickModelInput.value.trim()) patch.model = quickModelInput.value.trim();
-    if (quickKeyInput.value.trim()) patch.apiKey = quickKeyInput.value.trim();
-    if (!providerMeta(patch.provider)?.needsKey || patch.apiKey) {
-      quickSaveBtn.disabled = true;
-      try {
-        await applyConfig(patch);
-        quickKeyInput.value = '';
-        toast('Model connected — Firebrox is live on your model.');
-      } catch (err) {
-        toast(err.message, true);
-      } finally {
-        quickSaveBtn.disabled = false;
-      }
-    } else {
-      toast('Paste an API key first (or pick the demo brain).', true);
-      quickKeyInput.focus();
+  // Key bar: paste a key → auto-detect provider → chat.
+  async function connectKey() {
+    const key = keyBarInput.value.trim();
+    if (!key) {
+      toast('Paste an API key — or just chat with the demo brain.');
+      keyBarInput.focus();
+      return;
     }
-  });
-
-  quickDemoBtn.addEventListener('click', async () => {
+    const provider = detectProvider(key);
+    const label = providerMeta(provider)?.label || provider;
+    keyBarGo.disabled = true;
     try {
-      await applyConfig({ provider: 'demo' });
-      toast('Demo brain active — no key needed.');
-    } catch (err) { toast(err.message, true); }
-  });
-
-  $('#chips').addEventListener('click', (e) => {
-    const chip = e.target.closest('.chip');
-    if (chip) send(chip.textContent);
+      // model: '' clears any stale override so the provider default is used
+      await applyConfig({ provider, apiKey: key, model: '' });
+      keyBarInput.value = '';
+      keyBar.classList.add('hidden');
+      toast(`Connected to ${label} ✓ — start talking.`);
+      inputEl.focus();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      keyBarGo.disabled = false;
+    }
+  }
+  keyBarGo.addEventListener('click', connectKey);
+  keyBarInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); connectKey(); }
   });
 
   // Keyboard: Esc closes overlays
