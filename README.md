@@ -27,6 +27,12 @@ Firebrox ships with an offline **demo brain** so it still works out of the box.
 - **Polished UI** — dark theme, token streaming, collapsible tool-call cards
   with inputs/outputs & timing, inline settings panel, model status pill.
 - **Live settings** — switch provider/model/key from the UI without restarting.
+- **Chat history sidebar** — conversations are saved in your browser
+  (localStorage) and listed in a sidebar; delete or switch between them.
+- **Connect-a-model card** — paste an API key right on the main page.
+- **iOS-ready** — install to your Home Screen (Add to Home Screen), full-screen
+  standalone mode, safe-area/notch aware, no-zoom inputs, real app icons +
+  PWA manifest. Also works great on Android/desktop.
 
 ## 🚀 Quickstart
 

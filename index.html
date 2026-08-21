@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Firebrox — the multi-tool AI agent that runs on any model</title>
   <meta name="description" content="Firebrox is a provider-agnostic, multi-tool AI agent web app. It searches the web, runs code, writes files, does math, and remembers — with OpenAI, Anthropic, Gemini, Groq, Ollama, or any OpenAI-compatible endpoint." />
+  <meta name="theme-color" content="#0c0a09" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Firebrox" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -23,8 +29,8 @@
       --green: #4ade80;
       --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
     body {
       font-family: "Inter", system-ui, -apple-system, sans-serif;
       background:
@@ -34,16 +40,20 @@
       color: var(--text);
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
+      overscroll-behavior-y: none;
     }
     a { color: inherit; text-decoration: none; }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+    button, .provider, .card { touch-action: manipulation; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
 
     /* ---------- Nav ---------- */
     nav {
       position: sticky; top: 0; z-index: 50;
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       background: rgba(12, 10, 9, 0.75);
       border-bottom: 1px solid var(--border);
+      padding-top: env(safe-area-inset-top, 0px);
     }
     .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; }
@@ -184,7 +194,7 @@
     .step p { font-size: 0.85rem; color: var(--text-dim); }
 
     /* ---------- Footer ---------- */
-    footer { border-top: 1px solid var(--border); padding: 36px 0 44px; margin-top: 40px; }
+    footer { border-top: 1px solid var(--border); padding: 36px 0 44px; padding-bottom: calc(44px + env(safe-area-inset-bottom, 0px)); margin-top: 40px; }
     .foot-inner { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; color: var(--text-dim); font-size: 0.87rem; }
     .foot-inner .links { display: flex; gap: 20px; }
     .foot-inner a:hover { color: var(--text); }
@@ -230,6 +240,7 @@
         <span><span class="ok">✓</span> Works offline with the demo brain</span>
         <span><span class="ok">✓</span> One dependency (Express)</span>
         <span><span class="ok">✓</span> Node&nbsp;18+</span>
+        <span><span class="ok">✓</span> Installable on iOS — Add to Home Screen 📱</span>
       </div>
     </div>
 

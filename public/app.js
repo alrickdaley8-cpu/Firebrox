@@ -3,15 +3,23 @@
   'use strict';
 
   // ---------- State ----------
+  const LS_CHATS = 'firebrox.chats.v1';
+  const LS_ACTIVE = 'firebrox.active.v1';
+  const SB_COLLAPSED = 'firebrox.sbCollapsed';
+
   const state = {
     config: null,
     history: [], // [{ role: 'user'|'assistant', content }] sent to the API
     busy: false,
     controller: null,
+    chats: [], // [{ id, title, createdAt, updatedAt, messages }]
+    activeId: null,
+    stick: true, // keep scrolled to bottom while near bottom
   };
 
   // ---------- DOM helpers ----------
   const $ = (sel) => document.querySelector(sel);
+  const shellEl = $('#shell');
   const chatEl = $('#chat');
   const messagesEl = $('#messages');
   const emptyEl = $('#emptyState');
@@ -20,6 +28,12 @@
   const stopBtn = $('#stopBtn');
   const hintEl = $('#composerHint');
   const toastEl = $('#toast');
+  const sidebarEl = $('#sidebar');
+  const scrimEl = $('#scrim');
+  const chatListEl = $('#chatList');
+  const sbEmptyNote = $('#sbEmptyNote');
+
+  const isMobile = () => window.matchMedia('(max-width: 919px)').matches;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -36,8 +50,34 @@
     toastTimer = setTimeout(() => toastEl.classList.add('hidden'), 3200);
   }
 
-  function scrollToBottom() {
-    chatEl.scrollTop = chatEl.scrollHeight;
+  // ---------- Smart scrolling: stick to bottom unless the user scrolled up ----------
+  chatEl.addEventListener('scroll', () => {
+    state.stick = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 90;
+  }, { passive: true });
+
+  function scrollToBottom(force = false) {
+    if (force || state.stick) chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  // ---------- Clipboard ----------
+  async function copyText(text, btn) {
+    const label = btn ? btn.textContent : null;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = el('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      if (btn) { btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = label; }, 1600); }
+    } catch {
+      toast('Could not copy', true);
+    }
   }
 
   // ---------- Markdown-lite renderer (safe: escapes HTML first) ----------
@@ -61,10 +101,20 @@
 
     return parts.map((p) => {
       if (p.type === 'code') {
+        // code block with a header (language + copy button)
+        const wrap = el('div', 'code-block');
+        const head = el('div', 'code-head');
+        head.appendChild(el('span', 'code-lang', p.lang || 'code'));
+        const copyBtn = el('button', 'code-copy', 'Copy');
+        const src = p.value.replace(/\n$/, '');
+        copyBtn.addEventListener('click', () => copyText(src, copyBtn));
+        head.appendChild(copyBtn);
         const pre = el('pre');
-        const code = el('code', null, p.value.replace(/\n$/, ''));
+        const code = el('code', null, src);
         pre.appendChild(code);
-        return pre;
+        wrap.appendChild(head);
+        wrap.appendChild(pre);
+        return wrap;
       }
       return renderInline(p.value);
     });
@@ -76,9 +126,10 @@
     // Inline code
     html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
-    // Bold / italic
+    // Bold / italic / strikethrough
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
 
     // Links
     html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
@@ -100,7 +151,10 @@
         continue;
       }
       closeList();
-      if (line.trim() === '') { out.push(el('br')); }
+      if (/^\s*([-*_])\s*\1\s*\1[\s\S]*$/.test(line) && line.trim().length >= 3) {
+        out.push(el('hr'));
+      } else if (line.trim() === '') { out.push(el('br')); }
+      else if (line.startsWith('#### ')) out.push(el('h4', null, line.slice(5)));
       else if (line.startsWith('### ')) out.push(el('h3', null, line.slice(4)));
       else if (line.startsWith('## ')) out.push(el('h2', null, line.slice(3)));
       else if (line.startsWith('# ')) out.push(el('h1', null, line.slice(2)));
@@ -118,6 +172,146 @@
       } else frag.appendChild(node);
     }
     return frag;
+  }
+
+  // ---------- Chats (localStorage history) ----------
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  function loadChats() {
+    try {
+      state.chats = JSON.parse(localStorage.getItem(LS_CHATS) || '[]');
+      if (!Array.isArray(state.chats)) state.chats = [];
+    } catch { state.chats = []; }
+    state.activeId = localStorage.getItem(LS_ACTIVE) || null;
+  }
+
+  function persistChats() {
+    try {
+      localStorage.setItem(LS_CHATS, JSON.stringify(state.chats.slice(0, 100)));
+      localStorage.setItem(LS_ACTIVE, state.activeId || '');
+    } catch { /* storage full/blocked — history just won't persist */ }
+  }
+
+  function activeChat() {
+    return state.chats.find((c) => c.id === state.activeId) || null;
+  }
+
+  function titleFrom(text) {
+    const t = text.trim().replace(/\s+/g, ' ');
+    return t.length > 42 ? t.slice(0, 42) + '…' : t;
+  }
+
+  function ensureChat(firstUserText) {
+    let chat = activeChat();
+    if (!chat) {
+      chat = {
+        id: uid(),
+        title: titleFrom(firstUserText),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messages: [],
+      };
+      state.chats.unshift(chat);
+      state.activeId = chat.id;
+    }
+    return chat;
+  }
+
+  function syncActiveChat() {
+    const chat = activeChat();
+    if (!chat) return;
+    chat.messages = state.history.slice();
+    chat.updatedAt = Date.now();
+    persistChats();
+    renderChatList();
+  }
+
+  function relTime(ts) {
+    const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+    if (s < 60) return 'now';
+    if (s < 3600) return Math.floor(s / 60) + 'm';
+    if (s < 86400) return Math.floor(s / 3600) + 'h';
+    if (s < 7 * 86400) return Math.floor(s / 86400) + 'd';
+    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function renderChatList() {
+    chatListEl.innerHTML = '';
+    sbEmptyNote.classList.toggle('hidden', state.chats.length > 0);
+    for (const chat of state.chats) {
+      const item = el('div', 'chat-item' + (chat.id === state.activeId ? ' active' : ''));
+      item.appendChild(el('span', 'ci-icon', '💬'));
+      item.appendChild(el('span', 'ci-title', chat.title || 'New chat'));
+      const time = el('span', 'ci-time', relTime(chat.updatedAt || chat.createdAt));
+      time.style.cssText = 'font-size:10.5px;color:var(--text-faint);flex:none;';
+      item.appendChild(time);
+      const del = el('button', 'ci-del', '✕');
+      del.title = 'Delete conversation';
+      del.setAttribute('aria-label', 'Delete conversation');
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteChat(chat.id);
+      });
+      item.appendChild(del);
+      item.addEventListener('click', () => switchChat(chat.id));
+      chatListEl.appendChild(item);
+    }
+  }
+
+  function clearChatView() {
+    messagesEl.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+    state.history = [];
+  }
+
+  function newChat({ focusInput = true } = {}) {
+    state.activeId = null;
+    clearChatView();
+    persistChats();
+    renderChatList();
+    if (focusInput) inputEl.focus();
+  }
+
+  function switchChat(id) {
+    if (state.busy) { toast('Wait for the current reply to finish.'); return; }
+    if (id === state.activeId) { closeSidebar(); return; }
+    const chat = state.chats.find((c) => c.id === id);
+    if (!chat) return;
+    state.activeId = id;
+    clearChatView();
+    if (chat.messages.length) {
+      emptyEl.classList.add('hidden');
+      for (const msg of chat.messages) {
+        if (msg.role === 'user') addUserMessage(msg.content);
+        else addRestoredAssistantMessage(msg.content);
+      }
+    }
+    state.history = chat.messages.slice();
+    state.stick = true;
+    scrollToBottom(true);
+    persistChats();
+    renderChatList();
+    closeSidebar();
+  }
+
+  function deleteChat(id) {
+    state.chats = state.chats.filter((c) => c.id !== id);
+    if (state.activeId === id) {
+      state.activeId = null;
+      clearChatView();
+    }
+    persistChats();
+    renderChatList();
+    toast('Conversation deleted');
+  }
+
+  function restoreOnBoot() {
+    if (state.activeId && activeChat()) {
+      switchChat(state.activeId);
+    } else {
+      state.activeId = null;
+      renderChatList();
+    }
   }
 
   // ---------- Messages ----------
@@ -154,6 +348,25 @@
     messagesEl.appendChild(msg);
     scrollToBottom();
     return { msg, body, bubble, typing, toolsWrap, text: '' };
+  }
+
+  // Rehydrate a finished assistant message from saved history.
+  function addRestoredAssistantMessage(content) {
+    const { msg, body, bubble, typing } = addAssistantMessage();
+    typing.remove();
+    bubble.classList.remove('hidden');
+    bubble.innerHTML = '';
+    renderMarkdown(content).forEach((n) => bubble.appendChild(n));
+    attachCopyAction(body, () => content);
+    return msg;
+  }
+
+  function attachCopyAction(body, getText) {
+    const row = el('div', 'msg-actions');
+    const btn = el('button', 'copy-btn', '⧉ Copy');
+    btn.addEventListener('click', () => copyText(getText(), btn));
+    row.appendChild(btn);
+    body.appendChild(row);
   }
 
   function createToolCard({ id, name, args }) {
@@ -260,6 +473,7 @@
 
     addUserMessage(content);
     state.history.push({ role: 'user', content });
+    ensureChat(content);
 
     const { body, bubble, typing, toolsWrap, text: acc } = addAssistantMessage();
     const toolCards = new Map();
@@ -344,6 +558,8 @@
         toast(err.message, true);
       }
     } finally {
+      if (acc.text.trim()) attachCopyAction(body, () => acc.text);
+      syncActiveChat();
       state.busy = false;
       state.controller = null;
       sendBtn.classList.remove('hidden');
@@ -357,8 +573,34 @@
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
   }
 
-  // ---------- Settings ----------
+  // ---------- Sidebar open/close ----------
+  function openSidebar() {
+    if (isMobile()) {
+      sidebarEl.classList.add('open');
+      scrimEl.classList.remove('hidden');
+    } else {
+      shellEl.classList.remove('sb-collapsed');
+      localStorage.setItem(SB_COLLAPSED, '0');
+    }
+  }
+  function closeSidebar() {
+    if (isMobile()) {
+      sidebarEl.classList.remove('open');
+      scrimEl.classList.add('hidden');
+    }
+  }
+  function toggleSidebar() {
+    if (isMobile()) {
+      sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+    } else {
+      shellEl.classList.toggle('sb-collapsed');
+      localStorage.setItem(SB_COLLAPSED, shellEl.classList.contains('sb-collapsed') ? '1' : '0');
+    }
+  }
+
+  // ---------- Settings (modal + quick setup card on the main page) ----------
   const providerSelect = $('#providerSelect');
+  const quickProviderSelect = $('#quickProvider');
   const modelInput = $('#model');
   const modelList = $('#modelList');
   const apiKeyInput = $('#apiKey');
@@ -369,17 +611,34 @@
   const systemPromptInput = $('#systemPrompt');
   const keyStatus = $('#keyStatus');
 
-  function populateProviders(providers) {
-    providerSelect.innerHTML = '';
-    for (const [key, meta] of Object.entries(providers)) {
+  const quickKeyInput = $('#quickKey');
+  const quickModelInput = $('#quickModel');
+  const quickSaveBtn = $('#quickSave');
+  const quickDemoBtn = $('#quickDemo');
+  const setupCard = $('#setupCard');
+  const setupBadge = $('#setupBadge');
+  const setupSub = $('#setupSub');
+
+  function fillProviderSelect(select) {
+    select.innerHTML = '';
+    for (const [key, meta] of Object.entries(state.config?.providers || {})) {
       const opt = el('option', null, meta.label);
       opt.value = key;
-      providerSelect.appendChild(opt);
+      select.appendChild(opt);
     }
   }
 
+  function populateProviders(providers) {
+    fillProviderSelect(providerSelect);
+    fillProviderSelect(quickProviderSelect);
+  }
+
+  function providerMeta(key) {
+    return state.config?.providers?.[key] || {};
+  }
+
   function syncModelSuggestions() {
-    const meta = state.config?.providers?.[providerSelect.value];
+    const meta = providerMeta(providerSelect.value);
     modelList.innerHTML = '';
     if (meta?.models) {
       for (const m of meta.models) {
@@ -390,6 +649,14 @@
     }
     modelInput.placeholder = meta?.defaultModel ? `e.g. ${meta.defaultModel}` : 'model name';
     apiKeyInput.disabled = !meta?.needsKey;
+    syncQuickCardPlaceholders();
+  }
+
+  function syncQuickCardPlaceholders() {
+    const meta = providerMeta(quickProviderSelect.value);
+    quickKeyInput.disabled = !meta?.needsKey;
+    quickKeyInput.placeholder = meta?.needsKey ? 'sk-…' : 'not required';
+    quickModelInput.placeholder = meta?.defaultModel || 'model name';
   }
 
   function loadConfigIntoForm() {
@@ -405,6 +672,7 @@
     keyStatus.textContent = c.hasKey ? '(saved ✓)' : '(not set)';
     syncModelSuggestions();
     updatePill();
+    refreshSetupCard();
   }
 
   function updatePill() {
@@ -416,8 +684,36 @@
     const needsKey = c.providers?.[c.provider]?.needsKey;
     dot.className = 'dot' + (needsKey && !c.hasKey ? ' warn' : '');
     hintEl.textContent = (needsKey && !c.hasKey)
-      ? `No API key set for ${label} — set one in Settings, or switch to the Demo brain.`
+      ? `No API key set for ${label} — paste one above, or switch to the Demo brain.`
       : `Running on ${label}${c.model ? ' · ' + c.model : ''}.`;
+  }
+
+  function refreshSetupCard() {
+    const c = state.config;
+    if (!c) return;
+    const meta = c.providers?.[c.provider] || {};
+    const connected = !meta.needsKey || c.hasKey;
+    setupCard.classList.toggle('connected', connected);
+    setupBadge.classList.toggle('on', connected);
+    setupBadge.textContent = connected ? 'connected ✓' : 'not connected';
+    quickProviderSelect.value = c.provider;
+    quickModelInput.value = c.model || '';
+    setupSub.textContent = connected
+      ? `Connected to ${meta.label || c.provider}${c.model ? ` · ${c.model}` : ''}. Manage advanced options in Settings.`
+      : `Paste an API key to power Firebrox with ${meta.label || 'your provider'} — or keep using the free offline demo brain.`;
+  }
+
+  async function applyConfig(patch) {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save');
+    state.config = data;
+    loadConfigIntoForm();
+    return data;
   }
 
   async function loadConfig() {
@@ -438,15 +734,7 @@
     };
     if (apiKeyInput.value.trim()) patch.apiKey = apiKeyInput.value.trim();
 
-    const res = await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to save');
-    state.config = data;
-    loadConfigIntoForm();
+    await applyConfig(patch);
     apiKeyInput.value = '';
     $('#saveStatus').textContent = 'Saved ✓';
     toast('Settings saved.');
@@ -464,12 +752,17 @@
   });
   stopBtn.addEventListener('click', () => state.controller?.abort());
 
-  $('#newChatBtn').addEventListener('click', () => {
-    if (state.busy) return;
-    state.history = [];
-    messagesEl.innerHTML = '';
-    emptyEl.classList.remove('hidden');
-    inputEl.focus();
+  $('#sbNewChat').addEventListener('click', () => {
+    if (state.busy) { toast('Wait for the current reply to finish.'); return; }
+    newChat();
+    closeSidebar();
+  });
+  $('#menuBtn').addEventListener('click', toggleSidebar);
+  scrimEl.addEventListener('click', closeSidebar);
+  $('#sbClose').addEventListener('click', closeSidebar);
+  $('#sbSettings').addEventListener('click', () => {
+    $('#settingsOverlay').classList.remove('hidden');
+    closeSidebar();
   });
 
   $('#modelPill').addEventListener('click', () => $('#settingsOverlay').classList.remove('hidden'));
@@ -480,6 +773,7 @@
   });
 
   providerSelect.addEventListener('change', syncModelSuggestions);
+  quickProviderSelect.addEventListener('change', syncQuickCardPlaceholders);
   temperatureInput.addEventListener('input', () => { tempVal.textContent = temperatureInput.value; });
 
   $('#saveSettings').addEventListener('click', async () => {
@@ -487,12 +781,55 @@
     catch (err) { toast(err.message, true); }
   });
 
+  // Quick setup card on the main page
+  quickSaveBtn.addEventListener('click', async () => {
+    const patch = { provider: quickProviderSelect.value };
+    if (quickModelInput.value.trim()) patch.model = quickModelInput.value.trim();
+    if (quickKeyInput.value.trim()) patch.apiKey = quickKeyInput.value.trim();
+    if (!providerMeta(patch.provider)?.needsKey || patch.apiKey) {
+      quickSaveBtn.disabled = true;
+      try {
+        await applyConfig(patch);
+        quickKeyInput.value = '';
+        toast('Model connected — Firebrox is live on your model.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        quickSaveBtn.disabled = false;
+      }
+    } else {
+      toast('Paste an API key first (or pick the demo brain).', true);
+      quickKeyInput.focus();
+    }
+  });
+
+  quickDemoBtn.addEventListener('click', async () => {
+    try {
+      await applyConfig({ provider: 'demo' });
+      toast('Demo brain active — no key needed.');
+    } catch (err) { toast(err.message, true); }
+  });
+
   $('#chips').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (chip) send(chip.textContent);
   });
 
+  // Keyboard: Esc closes overlays
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $('#settingsOverlay').classList.add('hidden');
+      closeSidebar();
+    }
+  });
+
   // ---------- Boot ----------
-  loadConfig().catch((err) => toast('Could not load config: ' + err.message, true));
-  inputEl.focus();
+  loadChats();
+  if (localStorage.getItem(SB_COLLAPSED) === '1' && !isMobile()) {
+    shellEl.classList.add('sb-collapsed');
+  }
+  loadConfig()
+    .then(restoreOnBoot)
+    .catch((err) => toast('Could not load config: ' + err.message, true));
+  if (!isMobile()) inputEl.focus();
 })();
