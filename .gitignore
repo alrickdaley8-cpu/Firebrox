@@ -1,0 +1,6 @@
+node_modules/
+.env
+.firebrox/
+workspace/
+*.log
+.DS_Store
